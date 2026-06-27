@@ -1,0 +1,401 @@
+/* ============================================
+   GabayMed - Auth Pages Stylesheet
+   Shared by login.php and register.php
+   ============================================ */
+
+:root {
+  --primary: #0B8FAC;
+  --primary-dark: #097a93;
+  --sage: #7BC1B7;
+  --bg-light: #F4FAFA;
+  --text-dark: #1F2D2D;
+  --text-muted: #6B7B7B;
+  --border-color: #DCE6E6;
+  --error: #D64545;
+  --white: #FFFFFF;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text-dark);
+  background: var(--white);
+}
+
+.auth-wrapper {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ===== LEFT PANEL (branding) ===== */
+.auth-brand-panel {
+  flex: 1;
+  background: var(--bg-light);
+  padding: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-right: 1px solid var(--border-color);
+}
+
+.auth-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 80px;
+  position: absolute;
+  top: 40px;
+  left: 60px;
+}
+
+.auth-logo img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.auth-headline {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text-dark);
+  margin-bottom: 16px;
+  max-width: 420px;
+}
+
+.auth-headline span {
+  color: var(--primary);
+}
+
+.auth-subtext {
+  font-size: 15px;
+  color: var(--text-muted);
+  max-width: 400px;
+  line-height: 1.6;
+  margin-bottom: 40px;
+}
+
+.auth-testimonial {
+  background: var(--white);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 360px;
+}
+
+.auth-testimonial p {
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text-dark);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.auth-testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-testimonial-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--sage);
+  flex-shrink: 0;
+}
+
+.auth-testimonial-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.auth-testimonial-role {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ===== RIGHT PANEL (form) ===== */
+.auth-form-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 60px;
+  position: relative;
+}
+
+.auth-back-link {
+  position: absolute;
+  top: 40px;
+  right: 60px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid var(--border-color);
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.auth-back-link:hover {
+  background: var(--bg-light);
+}
+
+.auth-form-container {
+  max-width: 380px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.auth-title {
+  font-size: 26px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.auth-description {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 28px;
+}
+
+.form-group {
+  margin-bottom: 18px;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 6px;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="tel"],
+input[type="email"],
+input[type="date"],
+select {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-dark);
+  background: var(--white);
+  transition: border-color 0.15s ease;
+}
+
+input::placeholder {
+  color: #A8B5B5;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(11, 143, 172, 0.12);
+}
+
+.input-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.btn-primary {
+  width: 100%;
+  background: var(--primary);
+  color: var(--white);
+  border: none;
+  padding: 13px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  margin-top: 8px;
+}
+
+.btn-primary:hover {
+  background: var(--primary-dark);
+}
+
+.auth-footer-text {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-top: 22px;
+}
+
+.auth-footer-text a {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-footer-text a:hover {
+  text-decoration: underline;
+}
+
+.error-banner {
+  background: #FDEDED;
+  border: 1px solid var(--error);
+  color: var(--error);
+  font-size: 13px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 18px;
+}
+
+/* ===== Password field with eye-icon toggle ===== */
+.password-field-wrapper {
+  position: relative;
+}
+
+.password-field-wrapper input {
+  padding-right: 44px; /* leave room for the icon button */
+}
+
+.toggle-password {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.toggle-password:hover {
+  color: var(--primary);
+}
+
+.toggle-password .eye-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* When password is visible, show a "slashed eye" style by dimming the circle (pupil) */
+.toggle-password.is-visible {
+  color: var(--primary);
+}
+
+/* ===== Live password requirement checklist ===== */
+.password-checklist {
+  list-style: none;
+  margin-top: 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.password-checklist li {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  padding-left: 22px;
+  position: relative;
+  transition: color 0.15s ease;
+}
+
+/* Empty circle by default (requirement not met yet) */
+.password-checklist li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  background: var(--white);
+}
+
+/* Checkmark + green fill once the requirement is met */
+.password-checklist li.valid {
+  color: #1F6F5C;
+}
+
+.password-checklist li.valid::before {
+  border-color: var(--sage);
+  background: var(--sage);
+}
+
+.password-checklist li.valid::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 6px;
+  height: 4px;
+  border-left: 2px solid white;
+  border-bottom: 2px solid white;
+  transform: rotate(-45deg);
+}
+
+.success-banner {
+  background: #EAF7F2;
+  border: 1px solid var(--sage);
+  color: #1F6F5C;
+  font-size: 13px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 18px;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .auth-wrapper {
+    flex-direction: column;
+  }
+  .auth-brand-panel {
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    padding: 40px 24px;
+    min-height: auto;
+  }
+  .auth-logo {
+    position: static;
+    margin-bottom: 24px;
+  }
+  .auth-headline {
+    font-size: 26px;
+  }
+  .auth-testimonial {
+    display: none;
+  }
+  .auth-form-panel {
+    padding: 20px 24px 40px;
+    justify-content: flex-start;
+  }
+  .auth-back-link {
+    position: static;
+    align-self: flex-start;
+    margin-bottom: 28px;
+  }
+}
