@@ -1,0 +1,185 @@
+/* hospital-census.css
+   GabayMed — Admin Portal: Hospital Census page.
+   Loads AFTER doctor-dashboard.css and admin-dashboard.css. Reuses shared
+   tokens (--surface, --border, --radius-*, --shadow-lg, --text-*) and
+   shared components as-is (.table-wrap, .queue-table, .status-pill,
+   .empty-state, .activity-timeline) so this reads as part of the same
+   system, not a new one.
+
+   This file only contains what's specific to THIS page: the read-only
+   right-side detail drawer. No other portal has a slide-in side panel yet
+   (Patient Records uses a centered .modal-box — see
+   patient-records-modal.css) so this is a new, page-scoped component.
+*/
+
+body.drawer-open {
+    overflow: hidden;
+}
+
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 30, 0.45);
+    z-index: 2000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.drawer-backdrop.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.drawer-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(420px, 100%);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    z-index: 2001;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+
+.drawer-backdrop.active .drawer-panel {
+    transform: translateX(0);
+}
+
+.drawer-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 22px 22px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.drawer-header-identity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.drawer-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 15px;
+    flex-shrink: 0;
+}
+
+.drawer-header-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 2px;
+}
+
+.drawer-header-sub {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.drawer-close-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-shrink: 0;
+}
+
+.drawer-close-btn:hover {
+    background: var(--bg);
+    color: var(--text-primary);
+}
+
+.drawer-body {
+    padding: 20px 22px 28px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.drawer-section {
+    margin-bottom: 26px;
+}
+
+.drawer-section:last-child {
+    margin-bottom: 0;
+}
+
+.drawer-section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+}
+
+.drawer-info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+}
+
+.drawer-info-row:last-child {
+    border-bottom: none;
+}
+
+.drawer-info-key {
+    color: var(--text-secondary);
+}
+
+.drawer-info-value {
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: right;
+}
+
+.drawer-diagnosis-box {
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+/* Reuses .activity-timeline / .activity-item / .activity-dot as-is from
+   doctor-dashboard.css — the drawer's Timeline section is visually the
+   same component as the Dashboard's Recent Activity list. */
+
+@media (max-width: 480px) {
+    .drawer-panel {
+        width: 100%;
+    }
+}
+
+/* Table rows that open the drawer */
+.census-row {
+    cursor: pointer;
+}
+
+.census-row:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: -2px;
+}

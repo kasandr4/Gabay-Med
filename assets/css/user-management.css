@@ -1,0 +1,860 @@
+/* user-management.css
+   GabayMed — Admin Portal: User Management page.
+   UI ONLY. Loads AFTER doctor-dashboard.css and admin-dashboard.css and
+   reuses shared tokens (--surface, --border, --radius-*, --shadow-*,
+   --text-*, --teal/--blue/--amber/--red/--purple/--green) and shared
+   components as-is (.stats-grid-6, .stat-card, .card, .table-wrap,
+   .queue-table, .status-pill, .empty-state, .activity-timeline,
+   .tabs-container/.tabs-nav/.tab-btn, .search-field, .filter-select,
+   .btn/.btn-primary/.btn-secondary, .btn-refresh, .btn-row-action).
+   Only what's specific to THIS page lives here — following the same
+   self-contained-per-page convention as hospital-census.css,
+   inventory-procurement.css, hospital-reports.css and reconciliation.css.
+*/
+
+/* ---------- Small entrance animation for the stat cards (same technique
+   as hospital-reports.css's .fade-in-card / reconciliation.css's,
+   redefined here per this page's self-contained CSS file) ---------- */
+
+.fade-in-card {
+    animation: umFadeIn 0.35s ease both;
+}
+
+@keyframes umFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.btn-refresh.is-spinning svg {
+    animation: umSpin 0.6s linear;
+}
+
+@keyframes umSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- Page header buttons ---------- */
+
+.um-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* ---------- Role tabs (reuses .tabs-container/.tabs-nav/.tab-btn from
+   doctor-dashboard.css; tab-btn here acts as a role-filter shortcut over
+   the same table rather than swapping .tab-content panels) ---------- */
+
+.um-tabs .tab-btn .um-tab-count {
+    margin-left: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+    background: var(--bg);
+    border-radius: 999px;
+    padding: 1px 7px;
+}
+
+.um-tabs .tab-btn.active .um-tab-count {
+    color: var(--teal-dark);
+    background: var(--teal-light);
+}
+
+/* ---------- Toolbar ---------- */
+
+.um-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.um-toolbar .search-field {
+    flex: 1 1 220px;
+    min-width: 200px;
+}
+
+.um-toolbar-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.um-toolbar-filters .filter-select,
+.um-toolbar-filters input[type="date"].filter-select {
+    min-width: 132px;
+}
+
+/* ---------- Table: profile cell ---------- */
+
+.um-profile-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.um-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.um-avatar.um-avatar-doctor { background: var(--blue-light); color: var(--blue); }
+.um-avatar.um-avatar-pharmacist { background: var(--green-light); color: var(--green); }
+.um-avatar.um-avatar-admin { background: var(--purple-light); color: var(--purple); }
+.um-avatar.um-avatar-staff { background: var(--amber-light); color: #92650f; }
+
+.um-name-cell strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: 13.5px;
+}
+
+.um-name-cell span {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.um-row {
+    cursor: pointer;
+}
+
+.um-row:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: -2px;
+}
+
+/* ---------- Status badges ---------- */
+
+.status-um-active { background: var(--teal-light); color: var(--teal-dark); }
+.status-um-inactive { background: #eef1f4; color: var(--text-secondary); }
+.status-um-blocked { background: var(--red-light); color: var(--red); }
+.status-um-pending { background: var(--amber-light); color: #92650f; }
+.status-um-deactivated { background: var(--purple-light); color: var(--purple); }
+
+/* ---------- Row actions: two inline buttons + kebab dropdown for the
+   rest, since 6 actions is too many to lay out inline in one cell. ---------- */
+
+.um-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: flex-end;
+    position: relative;
+}
+
+.um-kebab-wrap {
+    position: relative;
+}
+
+.um-kebab-btn {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.um-kebab-btn:hover {
+    background: var(--bg);
+    border-color: var(--border);
+}
+
+.um-kebab-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 190px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    z-index: 50;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(4px);
+    transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+}
+
+.um-kebab-wrap.um-menu-open .um-kebab-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.um-kebab-menu button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border: none;
+    background: none;
+    border-radius: var(--radius-sm);
+    font-size: 13.5px;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+
+.um-kebab-menu button:hover {
+    background: var(--bg);
+}
+
+.um-kebab-menu button.um-danger {
+    color: var(--red);
+}
+
+.um-kebab-menu button.um-danger:hover {
+    background: var(--red-light);
+}
+
+.um-kebab-menu hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 4px 2px;
+}
+
+/* ---------- Bottom section grid: Recent Activity / Login History /
+   Role Distribution / Account Status Overview ---------- */
+
+.um-bottom-grid {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.um-bottom-grid .card {
+    margin: 0;
+}
+
+.um-bottom-grid-full {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 1100px) {
+    .um-bottom-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Role distribution — reuses the same "mock progress list" pattern used
+   on Hospital Reports / Reconciliation, redefined here so this page stays
+   self-contained like every other page's CSS file. */
+.mock-progress-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-top: 8px;
+}
+
+.mock-progress-list div {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding-bottom: 14px;
+}
+
+.mock-progress-list div::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--bg);
+}
+
+.mock-progress-list i {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--teal);
+}
+
+/* Account status overview — reuses the same donut pattern as Reports. */
+.mock-donut-chart {
+    width: 140px;
+    height: 140px;
+    margin: 8px auto 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mock-donut-chart span {
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.um-donut-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px 16px;
+    margin-top: 14px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+}
+
+.um-donut-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.um-donut-legend i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* ---------- Skeleton loaders ---------- */
+
+.skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-md);
+    background: #eef1f4;
+}
+
+.skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    animation: um-shimmer 1.4s infinite;
+}
+
+@keyframes um-shimmer {
+    100% { transform: translateX(100%); }
+}
+
+.um-skeleton-row td {
+    padding: 14px 16px;
+}
+
+.um-skeleton-line {
+    height: 14px;
+    border-radius: 6px;
+}
+
+.um-table-wrap.is-loading .queue-table tbody tr:not(.um-skeleton-row) {
+    display: none;
+}
+
+.um-table-wrap:not(.is-loading) .um-skeleton-row {
+    display: none;
+}
+
+/* ---------- Right-side View drawer (same component family as
+   hospital-census.css's drawer, redefined here per the project's
+   self-contained-per-page CSS convention) ---------- */
+
+body.drawer-open {
+    overflow: hidden;
+}
+
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 30, 0.45);
+    z-index: 2000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.drawer-backdrop.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.drawer-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(440px, 100%);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    z-index: 2001;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+
+.drawer-backdrop.active .drawer-panel {
+    transform: translateX(0);
+}
+
+.drawer-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 22px 22px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.drawer-header-identity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.drawer-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.drawer-header-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 2px;
+}
+
+.drawer-header-sub {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.drawer-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.drawer-icon-btn,
+.drawer-close-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    display: flex;
+}
+
+.drawer-icon-btn:hover,
+.drawer-close-btn:hover {
+    background: var(--bg);
+    color: var(--text-primary);
+}
+
+.drawer-body {
+    padding: 20px 22px 28px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.drawer-section {
+    margin-bottom: 26px;
+}
+
+.drawer-section:last-child {
+    margin-bottom: 0;
+}
+
+.drawer-section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+}
+
+.drawer-info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    gap: 12px;
+}
+
+.drawer-info-row:last-child {
+    border-bottom: none;
+}
+
+.drawer-info-key {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.drawer-info-value {
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: right;
+}
+
+.drawer-footer {
+    display: flex;
+    gap: 10px;
+    padding: 16px 22px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.drawer-footer .btn {
+    flex: 1;
+}
+
+/* Reuses .activity-timeline / .activity-item / .activity-dot as-is from
+   doctor-dashboard.css for the drawer's Recent Activity section. */
+
+/* ---------- Add / Edit User modal + confirmation modals (reuses
+   .modal-backdrop/.modal-box pattern already established by
+   inventory-procurement.css / patient-records-modal.css) ---------- */
+
+body.modal-open {
+    overflow: hidden;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 23, 30, 0.52);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.modal-backdrop.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.modal-box {
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(10px) scale(0.98);
+    transition: transform 0.2s ease;
+}
+
+.modal-backdrop.active .modal-box {
+    transform: translateY(0) scale(1);
+}
+
+.um-modal-box {
+    width: min(620px, calc(100vw - 48px));
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.um-modal-box-sm {
+    width: min(440px, calc(100vw - 48px));
+}
+
+.um-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 22px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.um-modal-header h3 {
+    margin: 0;
+    font-size: 16.5px;
+}
+
+.um-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    display: flex;
+}
+
+.um-modal-close:hover {
+    background: var(--bg);
+    color: var(--text-primary);
+}
+
+.um-form {
+    padding: 20px 22px 22px;
+    overflow-y: auto;
+}
+
+.um-form-section {
+    margin-bottom: 20px;
+}
+
+.um-form-section:last-of-type {
+    margin-bottom: 4px;
+}
+
+.um-form-section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+}
+
+.um-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.um-field input,
+.um-field select,
+.um-field textarea {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--text-primary);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    resize: vertical;
+}
+
+.um-field input:focus,
+.um-field select:focus,
+.um-field textarea:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.um-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.um-form-row .um-field {
+    margin-bottom: 0;
+}
+
+.um-form-row + .um-field,
+.um-form-row + .um-form-row {
+    margin-top: 14px;
+}
+
+.um-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.um-confirm-body {
+    padding: 20px 22px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.um-confirm-body strong {
+    color: var(--text-primary);
+}
+
+.um-confirm-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.um-confirm-icon.um-confirm-danger {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.um-confirm-icon.um-confirm-warn {
+    background: var(--amber-light);
+    color: #92650f;
+}
+
+.um-confirm-user-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin: 12px 0;
+}
+
+/* ---------- Toasts ---------- */
+
+.um-toast-host {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 2400;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 340px;
+}
+
+.um-toast {
+    background: var(--surface);
+    border-left: 4px solid var(--teal);
+    box-shadow: var(--shadow-lg);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    font-size: 13.5px;
+    color: var(--text-primary);
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.um-toast.um-toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.um-toast.um-toast-danger {
+    border-left-color: var(--red);
+}
+
+/* ---------- Hover animations ---------- */
+
+.stat-card,
+.report-category-card,
+.quick-action {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.um-row {
+    transition: background 0.12s ease;
+}
+
+.btn-row-action,
+.um-kebab-btn {
+    transition: background 0.12s ease, transform 0.1s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.btn-row-action:active,
+.um-kebab-btn:active {
+    transform: scale(0.96);
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+    .um-modal-box {
+        width: min(560px, calc(100vw - 32px));
+    }
+}
+
+@media (max-width: 640px) {
+    .um-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .um-toolbar-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .um-toolbar-filters .filter-select {
+        width: 100%;
+    }
+
+    .drawer-panel {
+        width: 100%;
+    }
+
+    .um-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-backdrop {
+        padding: 12px;
+    }
+}

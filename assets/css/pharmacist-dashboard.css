@@ -1,0 +1,1346 @@
+/* pharmacist-dashboard.css
+   GabayMed — Pharmacist Portal.
+   Same discipline as admin-dashboard.css: this is NOT a full rewrite of the
+   dashboard design system. Pharmacist pages load doctor-dashboard.css first
+   (same tokens, same .sidebar, .stat-card, .card, .table-wrap, .status-pill,
+   .empty-state, .queue-table etc. as every other portal) and this file only
+   ADDS what that stylesheet doesn't already cover:
+     1. A --green accent (doctor-dashboard.css only ships teal/blue/amber/red;
+        "Today's Dispensed" reads as a completed/positive action).
+     2. The persistent, non-dismissible low-stock/near-expiry alert banner —
+        no existing portal has this exact pattern (closest relative is
+        dashboard.css's .warning-banner, but that's patient-portal-scoped
+        and dismissible, so it doesn't fit here as-is).
+     3. Clickable queue rows (cursor + trailing chevron) and a "needs review"
+        row flag for prescriptions referencing a discontinued/missing
+        medicine — both new to this portal's flavor of .queue-table.
+     4. Dispense Medicine (3.3): the stock-check result card (success/fail
+        variants), a large button size, a disabled .btn-primary state, and
+        a dashed "demo switcher" strip for previewing the three stock
+        outcomes before real data exists (delete that last one once wired up).
+     5. Storage Exit Scan (3.4): a minimal large-target scan input/select,
+        an inline error strip, and a scoped toast component (mirrors
+        user-management.css's .um-toast pattern under new class names).
+     6. Inventory View (3.5): the search + filter-chip toolbar, sortable
+        column headers, a stock-zero tag, and the five medicine status-pill
+        variants (Normal / Low Stock / Near Expiry / Expired / Out of Stock).
+     7. Delivery Receiving (3.6): the shared .modal-backdrop/.modal-box base
+        (each portal page defines its own copy, same as inventory-procurement.css
+        and user-management.css do) plus "dr-" prefixed field/summary/action
+        classes for the Confirm Delivery modal, and .btn-sm.
+     8. Reconciliation Entry (3.7): the entry-form grid (reuses "dr-field"
+        from #7), the comparison-result panel, and Match/Mismatch status-pill
+        variants.
+     9. Dashboard Recent Activity feed (2026-07-17 pivot): replaces the old
+        Pending Prescriptions queue table now that Dispense Medicine is gone
+        — a simple icon + text + timestamp list instead of a full table.
+     10. Delivery Receiving order tracker (2026-07-17): a Shopee/TikTok-Shop-
+        style vertical stepper (.tracker-timeline) for the new Track Order
+        modal — Order Placed / Admin Approved / Capitol Approved / Shipped /
+        In Transit / Delivered, with done/current/pending states.
+     11. Reports (UI ONLY, 2026-07-18): the report-card grid used by
+        reports.php — each card pairs an icon/title/description with a
+        View/Print/Export CSV action row. Reuses .toolbar-filters,
+        .filter-select and .inventory-search for the top filter bar, and
+        the existing .status-pill variants (status-normal/status-low-stock/
+        status-near-expiry/status-expired/status-out-of-stock/status-match/
+        status-mismatch/status-pr-*) for the preview table — no new status
+        colors were needed.
+   Load this AFTER doctor-dashboard.css.
+*/
+
+/* ---------- 1. Extra stat accent ---------- */
+:root {
+    --green: #22a06b;
+    --green-light: #e7f7f0;
+}
+
+.stat-green .stat-icon {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+/* ---------- 2. Persistent low-stock / near-expiry alert banner ---------- */
+/* Sage-pale/amber-tinted per the spec, and deliberately not dismissible —
+   no close button, since hiding it would hide a real stock risk. It's a
+   link (not a static div) so clicking anywhere on it goes straight to the
+   filtered Inventory View. */
+.alert-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--amber-light);
+    border: 1px solid #f3d9a8;
+    border-radius: var(--radius-md);
+    padding: 14px 18px;
+    margin-bottom: 24px;
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: background 0.15s ease;
+}
+
+.alert-banner:hover {
+    background: #fbe9c8;
+}
+
+.alert-banner-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--amber);
+    color: #ffffff;
+    flex-shrink: 0;
+}
+
+.alert-banner-text {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.alert-banner-text strong {
+    font-weight: 700;
+}
+
+.alert-banner-action {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #9a6c14;
+    white-space: nowrap;
+}
+
+/* ---------- 3. Clickable queue rows + "needs review" flag ---------- */
+.queue-row {
+    cursor: pointer;
+}
+
+.queue-row-arrow {
+    color: var(--text-muted);
+    text-align: right;
+    width: 24px;
+}
+
+.queue-row-flagged td {
+    background: var(--red-light);
+}
+
+.row-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--red-light);
+    color: var(--red);
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* ---------- 4. Dispense Medicine (3.3) ---------- */
+
+/* Instructions text reuses .summary-value but needs to wrap as a paragraph
+   instead of the single-line label/value pairs .summary-grid was built for. */
+.summary-value-block {
+    display: block;
+    font-weight: 500;
+    line-height: 1.5;
+    max-width: 640px;
+}
+
+/* Stock check result — the most important thing on the page, so it gets
+   its own full-width, high-contrast card rather than folding into
+   .patient-summary-card. */
+.stock-check {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stock-check-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stock-check-ok {
+    border: 1px solid #bfead9;
+    background: var(--green-light);
+}
+
+.stock-check-ok .stock-check-icon {
+    background: var(--green);
+    color: #ffffff;
+}
+
+.stock-check-ok .stock-check-label {
+    color: #1a7a51;
+}
+
+.stock-check-fail {
+    border: 1px solid #f6c6c6;
+    background: var(--red-light);
+}
+
+.stock-check-fail .stock-check-icon {
+    background: var(--red);
+    color: #ffffff;
+}
+
+.stock-check-fail .stock-check-label {
+    color: #b32424;
+}
+
+.stock-check-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.stock-check-label {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.stock-check-detail {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+}
+
+.dispense-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.btn-large {
+    padding: 14px 28px;
+    font-size: 15px;
+}
+
+.btn-primary:disabled {
+    background: var(--border);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+/* DEMO ONLY: preview switcher for dispense-medicine.php's three stock
+   outcomes. Not a real feature — delete this block once the page reads
+   actual stock data instead of ?demo=. */
+.demo-switcher {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    margin-bottom: 20px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed var(--border);
+    background: var(--bg);
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.demo-switcher-link {
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.demo-switcher-link.active {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #ffffff;
+}
+
+/* ---------- 5. Storage Exit Scan (3.4) ---------- */
+/* Deliberately minimal, high-contrast, large-target UI — used standing at
+   a counter, scanning repeatedly, as fast as possible. */
+
+.scan-card {
+    max-width: 560px;
+    margin-bottom: 24px;
+}
+
+.scan-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 18px;
+}
+
+.scan-field label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.scan-field select {
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 14.5px;
+    font-family: inherit;
+}
+
+.scan-field select:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.scan-input {
+    padding: 20px 18px;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: var(--radius-md);
+    border: 2px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-family: inherit;
+    width: 100%;
+}
+
+.scan-input:focus {
+    outline: none;
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
+}
+
+.scan-input:disabled {
+    background: var(--bg);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.scan-inline-error {
+    margin: 0;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--red-light);
+    color: var(--red);
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+/* Toast host, same pattern as user-management.css's .um-toast-host, scoped
+   to this page's own class names. */
+.scan-toast-host {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 2400;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 340px;
+}
+
+.scan-toast {
+    background: var(--surface);
+    border-left: 4px solid var(--green);
+    box-shadow: var(--shadow-lg);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.scan-toast.scan-toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* ---------- 6. Inventory View (3.5) ---------- */
+
+.inventory-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.inventory-search {
+    flex: 1;
+    min-width: 220px;
+    max-width: 320px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    font-family: inherit;
+}
+
+.inventory-search:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.inventory-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.filter-chip:hover {
+    border-color: var(--teal);
+}
+
+.filter-chip.active {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #ffffff;
+}
+
+.filter-chip-count {
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.stock-zero-tag {
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--red);
+    color: #ffffff;
+    font-size: 10.5px;
+    font-weight: 700;
+}
+
+/* Sortable column headers */
+th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+th.sortable:hover {
+    color: var(--text-primary);
+}
+
+.sort-arrow {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 10px;
+    color: var(--teal);
+}
+
+/* Status chip variants specific to medicines (Normal / Low Stock /
+   Near Expiry / Expired / Out of Stock) — extends the existing
+   .status-pill base rather than redefining it. */
+.status-normal {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+.status-low-stock {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.status-near-expiry {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.status-expired {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.status-out-of-stock {
+    background: var(--red);
+    color: #ffffff;
+}
+
+/* ---------- 7. Delivery Receiving (3.6) ---------- */
+
+.status-po-issued {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.btn-sm {
+    padding: 7px 14px;
+    font-size: 13px;
+}
+
+/* Shared modal base — same pattern as inventory-procurement.css /
+   user-management.css (each page defines its own copy rather than a
+   global one, since not every portal page needs a modal). */
+body.modal-open {
+    overflow: hidden;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 23, 30, 0.52);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
+.modal-backdrop.active {
+    display: flex;
+}
+
+.modal-box {
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+}
+
+.dr-modal-box {
+    width: min(480px, calc(100vw - 48px));
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.restock-revision-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    max-width: 240px;
+}
+
+.resubmit-admin-note {
+    font-size: 13px;
+    color: var(--text-muted);
+    background: var(--bg, rgba(0, 0, 0, 0.03));
+    border-radius: var(--radius-sm, 6px);
+    padding: 8px 10px;
+    margin: 4px 0 0;
+}
+
+.resubmit-admin-note:empty {
+    display: none;
+}
+
+/* ---------- Expiry Tracking (Module 3.8) ---------- */
+
+.status-expiry-safe {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-expiry-warning {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.status-expiry-critical {
+    background: #fff0e0;
+    color: #c2540a;
+}
+
+.status-expiry-expired {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.expiry-rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.expiry-rule-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13.5px;
+    color: var(--text-secondary);
+}
+
+.expiry-rule-row .status-pill {
+    flex-shrink: 0;
+    min-width: 72px;
+    text-align: center;
+}
+
+.status-reorder-now {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.status-reorder-monitor {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.status-reorder-ok {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+/* ---------- FEFO Dispense Order (Module 3.10) ---------- */
+
+.fefo-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.fefo-group-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 8px;
+}
+
+.fefo-batch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fefo-batch-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.fefo-rank {
+    flex-shrink: 0;
+    min-width: 78px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-align: center;
+    background: var(--teal-light);
+    color: var(--teal-dark);
+}
+
+.fefo-batch-row:first-child .fefo-rank {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.fefo-batch-no {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.dr-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.dr-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.dr-modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    padding: 4px;
+}
+
+.dr-modal-close:hover {
+    color: var(--text-primary);
+}
+
+.dr-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.dr-po-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 20px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.dr-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.dr-field label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.dr-field input,
+.dr-field textarea,
+.dr-field select {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 14.5px;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+}
+
+.dr-field input:focus,
+.dr-field textarea:focus,
+.dr-field select:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.dr-units-computed {
+    display: block;
+    margin-top: 6px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.dr-mismatch-warning {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--amber-light);
+    color: #9a6c14;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.dr-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+/* ---------- 8. Reconciliation Entry (3.7) ---------- */
+
+.recon-form-card {
+    margin-bottom: 24px;
+}
+
+.recon-form-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.recon-form-grid .dr-field select,
+.recon-form-grid .dr-field input {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    font-family: inherit;
+}
+
+.recon-form-grid .dr-field select:focus,
+.recon-form-grid .dr-field input:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.recon-result {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+}
+
+.recon-result-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.recon-submit-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 18px;
+}
+
+.recon-submit-hint {
+    font-size: 12.5px;
+    color: var(--text-muted);
+}
+
+.status-match {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+.status-mismatch {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+@media (max-width: 900px) {
+    .recon-form-grid,
+    .recon-result-row {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* ---------- 9. Dashboard Recent Activity feed (post-pivot) ---------- */
+/* Replaces the old Pending Prescriptions queue table — a simpler list
+   feed rather than a full table, since each row is one short sentence. */
+
+.activity-feed {
+    display: flex;
+    flex-direction: column;
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 4px;
+    border-bottom: 1px solid var(--border);
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.activity-icon-delivery {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.activity-icon-exit {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+.activity-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.activity-medicine {
+    font-weight: 600;
+    font-size: 13.5px;
+}
+
+.activity-detail {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+}
+
+.activity-time {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* ---------- 10. Delivery Receiving \u2014 order tracker (Track Order) ---------- */
+
+.delivery-actions-cell {
+    display: flex;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+/* Vertical stepper timeline, same visual language as a shopping app's
+   order tracker: a connecting line down the left, a dot per stage, and
+   three states — done (small filled dot, dark label + date), current
+   (larger teal dot, bold teal label + date), pending (grey, no date). */
+.tracker-timeline {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 4px 4px 6px;
+}
+
+.tracker-step {
+    position: relative;
+    display: flex;
+    gap: 16px;
+    padding-bottom: 26px;
+    padding-left: 22px;
+}
+
+.tracker-step:last-child {
+    padding-bottom: 0;
+}
+
+.tracker-step::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 14px;
+    bottom: -4px;
+    width: 2px;
+    background: var(--border);
+}
+
+.tracker-step:last-child::before {
+    display: none;
+}
+
+.tracker-dot {
+    position: absolute;
+    left: 0;
+    top: 3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+}
+
+.tracker-step-done .tracker-dot {
+    background: var(--teal);
+}
+
+.tracker-step-done::before {
+    background: var(--teal);
+}
+
+.tracker-step-current .tracker-dot {
+    width: 14px;
+    height: 14px;
+    left: -2px;
+    top: -1px;
+    background: var(--teal);
+    box-shadow: 0 0 0 4px var(--teal-light);
+}
+
+.tracker-step-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.tracker-step-label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.tracker-step-done .tracker-step-label {
+    color: var(--text-primary);
+}
+
+.tracker-step-current .tracker-step-label {
+    color: var(--teal);
+    font-size: 14.5px;
+    font-weight: 700;
+}
+
+.tracker-step-date {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.tracker-step-hint {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ---------- 11. Inventory View \u2014 Request Restock (2026-07-17) ---------- */
+/* Same class names as admin/inventory-procurement.php's priority badges,
+   so a request looks identical whether viewed from Pharmacist or Admin. */
+
+.priority-badge {
+    display: inline-flex;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: capitalize;
+}
+
+.priority-low {
+    background: var(--bg);
+    color: var(--text-secondary);
+}
+
+.priority-medium {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.priority-high {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.priority-critical {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+/* ---------- 12. Request Restock \u2014 status chips + form error ---------- */
+/* Same colors as admin/inventory-procurement.php's status-pr-* classes
+   (assets/css/inventory-procurement.css), reproduced here since that
+   stylesheet isn't loaded on pharmacist pages — a request should read the
+   same regardless of which portal you're viewing it from. */
+
+.dr-field-spaced {
+    margin-top: 14px;
+}
+
+.status-pr-pending {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.status-pr-approved {
+    background: var(--teal-light);
+    color: var(--teal-dark);
+}
+
+.status-pr-revision_requested {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.status-pr-rejected {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.status-pr-completed {
+    background: #eef1f4;
+    color: var(--text-secondary);
+}
+
+.status-pr-purchase_ordered {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.dr-form-error {
+    background: var(--red-light);
+    color: var(--red);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 13px;
+    margin: 4px 0 0;
+}
+
+/* ---------- 13. UI-only polish pass (2026-07-18) ----------
+   Inventory summary cards + Batch No. column, "Recent Stock Activity"
+   panel, Request Restock modal section labels, dynamic Delivery
+   Receiving status pill + extra receiving fields, Storage Exit Scan
+   extra fields, Reconciliation "audit screen" adjustment reason/approve
+   action. Every rule here is presentation only — nothing here changes a
+   query, an endpoint, or an existing click handler's real behavior;
+   new inputs added to existing forms are additive and unused by the
+   real submit handlers, same as this file's other placeholder fields. */
+
+.inventory-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.batch-no {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+}
+
+.activity-icon-dispensed {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.activity-icon-expired {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.activity-qty {
+    font-weight: 700;
+    font-size: 13px;
+    white-space: nowrap;
+    margin-left: 8px;
+}
+
+.activity-qty-positive {
+    color: var(--green);
+}
+
+.activity-qty-negative {
+    color: var(--red);
+}
+
+.status-awaiting-delivery {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.modal-section-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin: 18px 0 10px;
+}
+
+.modal-section-label:first-child {
+    margin-top: 0;
+}
+
+.recon-adjustment-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+
+.btn-approve {
+    background: var(--green);
+    border: 1px solid var(--green);
+    color: #ffffff;
+}
+
+.btn-approve:hover {
+    background: #1a8a5c;
+    border-color: #1a8a5c;
+}
+
+.exit-extra-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--border);
+}
+
+.exit-extra-fields .scan-field {
+    margin-bottom: 0;
+}
+
+.exit-extra-fields select,
+.exit-extra-fields input,
+.exit-extra-fields textarea {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.exit-extra-fields select:focus,
+.exit-extra-fields input:focus,
+.exit-extra-fields textarea:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.exit-field-full {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 700px) {
+    .exit-extra-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .inventory-toolbar-actions {
+        margin-left: 0;
+    }
+}
+
+/* ---------- 11. Reports (UI ONLY) ---------- */
+
+.reports-filter-bar {
+    margin-bottom: 24px;
+}
+
+.reports-filter-bar .toolbar-filters {
+    align-items: center;
+}
+
+.reports-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 28px;
+}
+
+.report-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.report-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-sm);
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.report-card-title {
+    margin: 0;
+    font-size: 15.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.report-card-desc {
+    margin: -4px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.report-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+}
+
+.report-card-actions .btn {
+    flex: 1;
+    min-width: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.report-preview-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+@media (max-width: 1180px) {
+    .reports-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .reports-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .report-card-actions .btn {
+        flex: 1 1 auto;
+    }
+}
+
+@media print {
+
+    .sidebar,
+    .mobile-topbar,
+    .reports-filter-bar,
+    .reports-grid,
+    .page-footer,
+    .report-preview-header-actions {
+        display: none !important;
+    }
+
+    .main-content {
+        padding: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .card {
+        box-shadow: none !important;
+    }
+}

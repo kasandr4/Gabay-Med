@@ -1,0 +1,258 @@
+/* patient-records-modal.css
+   GabayMed — Doctor Portal: Patient Details modal.
+   No modal styles exist in doctor-dashboard.css, so this file is new,
+   but every value is pulled from the shared design tokens defined
+   there (colors, radius, shadow, spacing) and reuses existing
+   components (.card, .status-pill, .activity-timeline,
+   .records-table) so the modal reads as an extension of the
+   existing Doctor Portal UI rather than a new design language.
+   Load this after doctor-dashboard.css.
+*/
+
+.records-table tbody tr.patient-row {
+    cursor: pointer;
+}
+
+.records-table tbody tr.patient-row:hover {
+    background: var(--bg);
+}
+
+body.modal-open {
+    overflow: hidden;
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 30, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 2000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.modal-backdrop.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal-box {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: min(950px, 100%);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    transform: scale(0.95);
+    opacity: 0;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+    overflow: hidden;
+}
+
+.modal-backdrop.active .modal-box {
+    transform: scale(1);
+    opacity: 1;
+}
+
+/* ----- Header: avatar, name/ID, status badge, chips ----- */
+
+.modal-header {
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.modal-header-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.modal-identity {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.modal-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.modal-identity-text {
+    min-width: 0;
+}
+
+.modal-identity-text h2 {
+    margin: 0 0 6px;
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.modal-identity-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.modal-patient-id {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.modal-close-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.modal-close-btn:hover {
+    background: var(--bg);
+    color: var(--text-primary);
+}
+
+/* ----- Body: card grid ----- */
+
+.modal-body {
+    padding: 24px 28px 28px;
+    overflow-y: auto;
+    background: var(--bg);
+}
+
+.modal-cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.modal-cards-grid .card {
+    margin: 0;
+}
+
+.modal-card-full {
+    grid-column: 1 / -1;
+}
+
+.modal-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+}
+
+.modal-info-item .info-label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.modal-info-item .info-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.modal-info-item .info-value.not-on-file {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-style: italic;
+}
+
+/* Alternating rows + hover for tables inside the modal */
+.modal-cards-grid .records-table tbody tr:nth-child(even) {
+    background: var(--bg);
+}
+
+.modal-cards-grid .records-table tbody tr:hover {
+    background: var(--teal-light);
+}
+
+/* Confinement history reuses the dashboard's .activity-timeline
+   pattern (dot + connecting line) instead of a new component. */
+.confinement-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.confinement-meta strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.modal-loading,
+.modal-error {
+    padding: 40px 0;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* ----- Responsive ----- */
+
+@media (max-width: 900px) {
+    .modal-cards-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .modal-backdrop {
+        padding: 12px;
+    }
+
+    .modal-box {
+        max-height: 94vh;
+    }
+
+    .modal-header {
+        padding: 20px 18px 16px;
+    }
+
+    .modal-body {
+        padding: 18px 18px 22px;
+    }
+
+    .modal-avatar {
+        width: 46px;
+        height: 46px;
+        font-size: 16px;
+    }
+
+    .modal-identity-text h2 {
+        font-size: 16.5px;
+    }
+}

@@ -1,0 +1,342 @@
+/* ============================================
+   GabayMed - Booking Flow Stylesheet
+   Extends dashboard.css with booking-specific UI
+   ============================================ */
+
+.error-banner {
+  background: #FDEDED;
+  border: 1px solid var(--error);
+  color: var(--error);
+  font-size: 13px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 18px;
+}
+
+.booking-card {
+  max-width: 720px;
+}
+
+.booking-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 12px;
+}
+
+textarea {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  color: var(--text-dark);
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(11, 143, 172, 0.12);
+}
+
+.char-count {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 8px 0 18px;
+}
+
+/* ===== Department recommendation ===== */
+.recommended-department {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--primary);
+  margin: 6px 0 8px;
+}
+
+.recommendation-rationale {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+.booking-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.booking-actions .btn {
+  flex: none;
+}
+
+.booking-override {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.booking-override select {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 14px;
+  background: var(--white);
+}
+
+/* ===== Doctor selection grid ===== */
+.doctor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.doctor-card {
+  display: block;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  position: relative;
+}
+
+.doctor-card input[type="radio"] {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.doctor-card:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--bg-light);
+}
+
+.doctor-name {
+  font-weight: 700;
+  font-size: 14.5px;
+  margin-bottom: 4px;
+  padding-right: 24px;
+}
+
+.doctor-meta {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* ===== Slot selection grid ===== */
+.slot-grid-wrapper {
+  overflow-x: auto;
+  margin-bottom: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+}
+
+.slot-grid {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 560px;
+}
+
+.slot-grid th {
+  background: var(--bg-light);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 10px 6px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.slot-hour-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 6px 10px;
+  white-space: nowrap;
+  border-right: 1px solid var(--border-color);
+}
+
+.slot-grid td {
+  text-align: center;
+  padding: 4px;
+  border-bottom: 1px solid #EEF4F4;
+}
+
+.slot-btn {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--sage);
+  background: #EAF7F2;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.08s ease;
+}
+
+.slot-btn:hover {
+  background: var(--sage);
+}
+
+.slot-btn.slot-selected {
+  background: var(--primary);
+  border-color: var(--primary-dark);
+}
+
+.slot-btn.slot-disabled {
+  background: #F0F0F0;
+  border-color: var(--border-color);
+  cursor: not-allowed;
+}
+
+.day-off-header {
+  background: #FDEDED;
+  color: var(--error);
+}
+
+.day-off-label {
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.day-off-cell {
+  background: #FFF8F8;
+}
+
+.day-off-cell .slot-btn {
+  background: #F5E5E5;
+  border-color: #E8C8C8;
+}
+
+.lunch-break-row {
+  background: #FAFAF5;
+}
+
+.lunch-break-cell {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  padding: 8px;
+  font-style: italic;
+}
+
+.slot-grid-legend {
+  display: flex;
+  gap: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 10px 0 16px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.legend-available {
+  background: #EAF7F2;
+  border: 1px solid var(--sage);
+}
+
+.legend-booked {
+  background: #F0F0F0;
+  border: 1px solid var(--border-color);
+}
+
+.legend-dayoff {
+  background: #F5E5E5;
+  border: 1px solid #E8C8C8;
+}
+
+.slot-selected-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 16px;
+}
+
+.link-back {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.link-back:hover {
+  color: var(--primary);
+}
+
+/* ===== Confirmation summary ===== */
+.confirmation-summary {
+  margin-bottom: 24px;
+}
+
+.confirmation-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.confirmation-row:last-child {
+  border-bottom: none;
+}
+
+.confirmation-key {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.confirmation-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dark);
+  text-align: right;
+}
+
+.confirmation-value-mono {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.02em;
+}
+
+.policy-notice {
+  background: var(--amber-bg);
+  border: 1px solid var(--amber);
+  color: #8A5C12;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 600px) {
+  .doctor-grid {
+    grid-template-columns: 1fr;
+  }
+  .confirmation-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .confirmation-value {
+    text-align: left;
+  }
+}

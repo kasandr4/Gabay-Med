@@ -1,0 +1,375 @@
+/* ─── Profile Page Styles ─────────────────────────────────────────────────── */
+
+.profile-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 8px 0 40px;
+}
+
+/* ─── Shared Card Base ────────────────────────────────────────────────────── */
+
+.profile-card {
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e5e7eb;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+    overflow: hidden;
+}
+
+.profile-card:hover {
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.10);
+    transform: translateY(-1px);
+}
+
+/* ─── Header Card ─────────────────────────────────────────────────────────── */
+
+.profile-header-card {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 28px 32px;
+}
+
+.profile-avatar {
+    flex-shrink: 0;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0f766e, #14b8a6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 1px;
+    box-shadow: 0 4px 14px rgba(15, 118, 110, 0.30);
+    user-select: none;
+    transition: transform 0.2s ease;
+}
+
+.profile-header-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.profile-header-name {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1f2937;
+    line-height: 1.2;
+    margin: 0;
+}
+
+.profile-header-role {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f766e;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin: 0;
+}
+
+.profile-header-location {
+    font-size: 13.5px;
+    color: #6b7280;
+    margin: 0;
+}
+
+/* ─── Section Cards ───────────────────────────────────────────────────────── */
+
+.profile-section-card {
+    padding: 28px 32px;
+}
+
+.profile-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+    border-bottom: 1.5px solid #e5e7eb;
+}
+
+.profile-section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f2937;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.profile-section-title::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 18px;
+    background: linear-gradient(180deg, #0f766e, #14b8a6);
+    border-radius: 4px;
+}
+
+/* Standalone titles (e.g. Address card) still need the bottom border */
+.profile-section-card > .profile-section-title {
+    padding-bottom: 14px;
+    margin-bottom: 22px;
+    border-bottom: 1.5px solid #e5e7eb;
+}
+
+/* ─── Action Buttons ──────────────────────────────────────────────────────── */
+
+.profile-actions {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.btn {
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 9px 18px;
+    border-radius: 10px;
+    border: 1.5px solid transparent;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+    white-space: nowrap;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+.btn-edit {
+    background: #0f766e;
+    color: #ffffff;
+}
+
+.btn-edit:hover {
+    background: #0c5f59;
+}
+
+.btn-save {
+    background: #14b8a6;
+    color: #ffffff;
+}
+
+.btn-save:hover {
+    background: #0f9c8c;
+}
+
+.btn-save:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-cancel {
+    background: #ffffff;
+    color: #6b7280;
+    border-color: #e5e7eb;
+}
+
+.btn-cancel:hover {
+    background: #f5f7f8;
+    color: #1f2937;
+}
+
+/* ─── Info Grid ───────────────────────────────────────────────────────────── */
+
+.profile-info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px 32px;
+}
+
+.profile-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.profile-info-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.55px;
+}
+
+/* ─── Form Inputs (read-only & editable states) ──────────────────────────── */
+
+.profile-input {
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    color: #1f2937;
+    background: transparent;
+    border: 1.5px solid transparent;
+    border-radius: 8px;
+    padding: 6px 0;
+    width: 100%;
+    transition: background 0.15s ease, border-color 0.15s ease, padding 0.15s ease;
+}
+
+.profile-input:disabled {
+    color: #1f2937;
+    cursor: default;
+    opacity: 1;
+    -webkit-text-fill-color: #1f2937;
+}
+
+/* Editing mode: inputs become visually distinct fields */
+.profile-form--editing .profile-input:not(:disabled) {
+    background: #f9fafb;
+    border-color: #e5e7eb;
+    padding: 8px 12px;
+}
+
+.profile-form--editing .profile-input:not(:disabled):focus {
+    outline: none;
+    border-color: #14b8a6;
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
+}
+
+select.profile-input {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 4px center;
+    background-size: 16px;
+}
+
+.profile-form--editing select.profile-input:not(:disabled) {
+    background-position: right 12px center;
+    padding-right: 32px;
+}
+
+select.profile-input:disabled {
+    background-image: none;
+}
+
+.profile-textarea {
+    resize: vertical;
+    min-height: 44px;
+    line-height: 1.5;
+}
+
+/* ─── Address Card ────────────────────────────────────────────────────────── */
+
+.profile-address-value {
+    font-size: 15px;
+    font-weight: 500;
+    color: #1f2937;
+    line-height: 1.6;
+}
+
+.empty {
+    color: #9ca3af;
+    font-style: italic;
+    font-weight: 400;
+}
+
+/* ─── Toast Notification ──────────────────────────────────────────────────── */
+
+.profile-toast {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 1000;
+    padding: 14px 22px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ffffff;
+    background: #0f766e;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    transform: translateY(-12px);
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    max-width: 360px;
+}
+
+.profile-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.profile-toast.error {
+    background: #dc2626;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .profile-info-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px 24px;
+    }
+
+    .profile-header-card {
+        padding: 22px 20px;
+    }
+
+    .profile-section-card {
+        padding: 22px 20px;
+    }
+
+    .profile-avatar {
+        width: 68px;
+        height: 68px;
+        font-size: 24px;
+    }
+
+    .profile-header-name {
+        font-size: 19px;
+    }
+
+    .profile-toast {
+        left: 16px;
+        right: 16px;
+        top: 16px;
+        max-width: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .profile-info-grid {
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+
+    .profile-header-card {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 20px 16px;
+    }
+
+    .profile-section-card {
+        padding: 20px 16px;
+    }
+
+    .profile-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .profile-actions {
+        width: 100%;
+    }
+
+    .profile-actions .btn {
+        flex: 1;
+    }
+}

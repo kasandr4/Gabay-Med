@@ -1,0 +1,120 @@
+/* admin-dashboard.css
+   GabayMed — Admin/Pharmacist Portal.
+   This is intentionally NOT a full rewrite of the dashboard design system.
+   Admin pages load doctor-dashboard.css first (same tokens, same .sidebar,
+   .stat-card, .card, .table-wrap, .status-pill, .empty-state, etc. as the
+   Doctor Portal) and this file only ADDS what that stylesheet doesn't
+   already cover:
+     1. Two extra stat-card accent colors (Admin has 6 stat cards vs.
+        the Doctor Dashboard's 4, so it needs 2 more).
+     2. A 6-up stats grid variant.
+     3. The admin sidebar's profile dropdown (new component — no existing
+        portal has a dropdown menu off the sidebar user card, only a plain
+        logout link).
+   Load this AFTER doctor-dashboard.css.
+*/
+
+/* ---------- 1. Extra stat accents ---------- */
+/* --teal / --blue / --amber / --red already exist. Purple + green below
+   follow the exact same --X / --X-light pairing pattern so they drop into
+   .stat-purple / .stat-green the same way .stat-teal etc. already work. */
+:root {
+    --purple: #8b5cf6;
+    --purple-light: #f2edfe;
+    --green: #22a06b;
+    --green-light: #e7f7f0;
+}
+
+.stat-purple .stat-icon {
+    background: var(--purple-light);
+    color: var(--purple);
+}
+
+.stat-green .stat-icon {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+/* ---------- 2. Six-card stats grid ---------- */
+/* doctor-dashboard.css's .stats-grid is hard-coded to repeat(4, 1fr) for
+   the Doctor Dashboard's 4 cards. Admin's Dashboard needs 6, so this is a
+   separate class rather than touching the shared one. */
+.stats-grid-6 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 28px;
+}
+
+@media (max-width: 1100px) {
+    .stats-grid-6 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .stats-grid-6 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------- 3. Section titles + standalone Log Out button ---------- */
+/* NOTE: .nav-section-title and .logout-btn are very likely ALREADY defined
+   in doctor-dashboard.css, since that's exactly the pattern used in the
+   Doctor Portal sidebar screenshot (uppercase group labels + a bordered
+   red Log Out button under the user card). Admin previously used a single
+   flat nav list and a dropdown instead, so those classes were unused here.
+   If doctor-dashboard.css already has matching rules, DELETE this block
+   to avoid duplicate/conflicting definitions — keep whichever version
+   matches the rest of the app. This block is only a safe fallback so the
+   sidebar still looks right if those base rules don't exist. */
+.nav-section-title {
+    display: block;
+    padding: 0 12px;
+    margin: 18px 0 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--sidebar-text-muted, rgba(255, 255, 255, 0.4));
+}
+
+.nav-section-group:first-child .nav-section-title {
+    margin-top: 4px;
+}
+
+.user-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.12s ease;
+}
+
+.user-card:hover {
+    background: var(--sidebar-hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+.logout-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--red);
+    border-radius: var(--radius-md);
+    color: var(--red);
+    background: transparent;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+
+.logout-btn:hover {
+    background: var(--red);
+    color: #ffffff;
+}

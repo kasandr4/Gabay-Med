@@ -6,11 +6,26 @@
 
 session_start(); // starts/resumes the session so we can store "who is logged in"
 require_once 'config/db.php';
+require_once 'includes/csrf.php';
 
 $errors = [];
+
+$login_success = null;
+if (!empty($_SESSION['login_flash'])) {
+    $login_success = $_SESSION['login_flash']['message'];
+    unset($_SESSION['login_flash']);
+}
+
 $lockout_seconds_remaining = 0; // used to drive the JS countdown, 0 = not locked out
 
+if (!empty($_SESSION['csrf_flash'])) {
+    $errors[] = $_SESSION['csrf_flash']['message'];
+    unset($_SESSION['csrf_flash']);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    require_csrf('login.php');
 
     $phone_number = trim($_POST['phone_number'] ?? '');
     $password     = $_POST['password'] ?? '';
@@ -24,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($errors)) {
         // Look up the account by phone number
-        $stmt = $conn->prepare("SELECT user_id, role, password, first_name, last_name, is_active, failed_attempts, lockout_until FROM users WHERE phone_number = ?");
+        $stmt = $conn->prepare("SELECT user_id, role, password, first_name, last_name, is_active, account_status, failed_attempts, lockout_until FROM users WHERE phone_number = ?");
         $stmt->bind_param("s", $phone_number);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -35,6 +50,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Mobile number genuinely not found — safe to say so specifically,
             // since this is no more revealing than "user not found" on most systems.
             $errors[] = "This mobile number is not registered.";
+        } elseif ($user['account_status'] === 'guest') {
+            // Guest accounts (created by staff for a walk-in patient) have no
+            // real password yet - `password` is NULL until the patient signs
+            // up themselves via register.php using this same phone number,
+            // which links to this record instead of creating a duplicate.
+            // Checking this BEFORE password_verify() avoids passing a null
+            // hash to it and gives the person a message that actually
+            // explains their situation.
+            $errors[] = "This account hasn't been set up for online access yet. You can create one at any time using this same mobile number.";
         } elseif (!$user['is_active']) {
             $errors[] = "This account has been deactivated. Please contact the hospital administrator.";
         } elseif ($user['lockout_until'] !== null && strtotime($user['lockout_until']) > time()) {
@@ -74,6 +98,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute();
             $stmt->close();
 
+            // Regenerate the session ID now that the user has proven who they
+            // are. This is a privilege change (anonymous -> authenticated),
+            // so the session ID issued before login should never remain valid
+            // afterward - otherwise a session ID fixed/known before login
+            // (e.g. shared via a link, or set before the user ever logged in)
+            // would silently become a valid authenticated session once they
+            // log in. true = also destroy the old session data on the server.
+            session_regenerate_id(true);
+
             $_SESSION['user_id']    = $user['user_id'];
             $_SESSION['role']       = $user['role'];
             $_SESSION['first_name'] = $user['first_name'];
@@ -90,8 +123,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 case 'admin':
                     header("Location: admin/dashboard.php");
                     break;
+                case 'pharmacist':
+                    header("Location: pharmacist/dashboard.php");
+                    break;
+                case 'staff':
+                    header("Location: staff/check-in.php");
+                    break;
                 default:
-                    header("Location: index.html");
+                    header("Location: index.php");
             }
             exit; // always exit immediately after a header() redirect
         }
@@ -106,6 +145,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sign In - GabayMed</title>
     <link rel="stylesheet" href="assets/css/auth.css">
+    <noscript>
+        <style>
+            body {
+                opacity: 1 !important;
+            }
+        </style>
+    </noscript>
 </head>
 
 <body>
@@ -139,12 +185,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- RIGHT: Form panel -->
         <div class="auth-form-panel">
-            <a href="index.html" class="auth-back-link">&larr; Back to Home</a>
+            <a href="index.php" class="auth-back-link">&larr; Back to Home</a>
 
             <div class="auth-form-container">
 
                 <h2 class="auth-title">Welcome back</h2>
                 <p class="auth-description">Sign in to access your GabayMed account.</p>
+
+                <?php if (!empty($login_success)): ?>
+                    <div class="error-banner" style="border-color: var(--teal, #0B8FAC); background: rgba(11,143,172,0.08); color: var(--teal, #0B8FAC);">
+                        <div><?= htmlspecialchars($login_success) ?></div>
+                    </div>
+                <?php endif; ?>
 
                 <?php if (!empty($errors)): ?>
                     <div class="error-banner">
@@ -161,6 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
 
                 <form method="POST" action="login.php" id="login-form">
+                    <?= csrf_field() ?>
 
                     <div class="form-group">
                         <label for="phone_number">Mobile Number</label>
@@ -195,6 +248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     </div>
 
+    <script src="assets/js/page-transitions.js"></script>
     <script>
         function togglePassword(fieldId, button) {
             const field = document.getElementById(fieldId);

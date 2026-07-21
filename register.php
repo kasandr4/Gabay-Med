@@ -7,6 +7,7 @@ require_once 'config/db.php';
 
 $errors = [];
 $success = false;
+$linked_existing_record = false;
 
 // This block only runs when the form is submitted (POST request)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -23,6 +24,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $address      = trim($_POST['address'] ?? '');
     $password     = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
+
+    // Self-declared at signup — not verified against an ID here. A real
+    // priority lane still needs a verification step at check-in; this
+    // just captures the declaration so it exists somewhere. Falls back
+    // to 'regular' for anything unexpected instead of erroring, since
+    // this is an optional field.
+    $allowed_priority_types = ['regular', 'senior', 'pwd', 'ip'];
+    $priority_type = trim($_POST['priority_type'] ?? 'regular');
+    if (!in_array($priority_type, $allowed_priority_types, true)) {
+        $priority_type = 'regular';
+    }
 
     // Step 2: Validate required fields
     if ($first_name === '') {
@@ -74,23 +86,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = "Passwords do not match.";
     }
 
-    // Step 3: If no errors so far, check the database for duplicates
+    // Step 3: If no errors so far, check the database for an existing
+    // record under this phone number. Two different outcomes here:
+    //   - account_status = 'active'  -> a real account already exists, block it as before.
+    //   - account_status = 'guest'   -> this is a hospital record staff created
+    //     during a walk-in/registration visit, with no online account yet.
+    //     Instead of rejecting it as a duplicate, we link this signup to
+    //     that same record below (Step 4) rather than creating a new patient.
+    $existing_guest_id = null;
     if (empty($errors)) {
-        $stmt = $conn->prepare("SELECT user_id FROM users WHERE phone_number = ?");
+        $stmt = $conn->prepare("SELECT user_id, account_status FROM users WHERE phone_number = ?");
         $stmt->bind_param("s", $phone_number);
         $stmt->execute();
-        $stmt->store_result();
-
-        if ($stmt->num_rows > 0) {
-            $errors[] = "An account with that mobile number already exists.";
-        }
+        $existing = $stmt->get_result()->fetch_assoc();
         $stmt->close();
+
+        if ($existing) {
+            if ($existing['account_status'] === 'guest') {
+                $existing_guest_id = (int) $existing['user_id'];
+            } else {
+                $errors[] = "An account with that mobile number already exists.";
+            }
+        }
     }
 
-    // Also check email for duplicates, but only if one was provided
+    // Also check email for duplicates, but only if one was provided, and
+    // only against OTHER users — not the guest record we're about to link.
     if (empty($errors) && $email !== '') {
-        $stmt = $conn->prepare("SELECT user_id FROM users WHERE email = ?");
-        $stmt->bind_param("s", $email);
+        $exclude_id = $existing_guest_id ?? 0;
+        $stmt = $conn->prepare("SELECT user_id FROM users WHERE email = ? AND user_id != ?");
+        $stmt->bind_param("si", $email, $exclude_id);
         $stmt->execute();
         $stmt->store_result();
 
@@ -100,7 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
     }
 
-    // Step 4: If everything checks out, insert the new patient
+    // Step 4: If everything checks out, either link the existing guest
+    // record or insert a brand-new patient.
     if (empty($errors)) {
         // NEVER store plain-text passwords. password_hash() scrambles it
         // using a one-way algorithm (bcrypt) that can't be reversed.
@@ -113,31 +139,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sex_value        = $sex !== '' ? $sex : null;
         $address_value    = $address !== '' ? $address : null;
 
-        $stmt = $conn->prepare("
-            INSERT INTO users
-                (role, phone_number, password, email, first_name, last_name, birthdate, philhealth_id, sex, address)
-            VALUES
-                ('patient', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        $stmt->bind_param(
-            "sssssssss",
-            $phone_number,
-            $hashed_password,
-            $email_value,
-            $first_name,
-            $last_name,
-            $birthdate_value,
-            $philhealth_value,
-            $sex_value,
-            $address_value
-        );
+        if ($existing_guest_id !== null) {
+            // Link to the existing hospital record instead of creating a
+            // duplicate patient. First/last name are left untouched since
+            // that record may already be tied to real appointments/consultations
+            // under the name staff entered — only fields that are still
+            // empty on the existing record get filled in from this form.
+            // The re-check on account_status = 'guest' guards against a
+            // race where the same guest activates twice at once.
+            $stmt = $conn->prepare("
+                UPDATE users
+                SET password = ?,
+                    email = COALESCE(email, ?),
+                    birthdate = COALESCE(birthdate, ?),
+                    philhealth_id = COALESCE(philhealth_id, ?),
+                    sex = COALESCE(sex, ?),
+                    address = COALESCE(address, ?),
+                    priority_type = ?,
+                    account_status = 'active'
+                WHERE user_id = ? AND account_status = 'guest'
+            ");
+            $stmt->bind_param(
+                "sssssssi",
+                $hashed_password,
+                $email_value,
+                $birthdate_value,
+                $philhealth_value,
+                $sex_value,
+                $address_value,
+                $priority_type,
+                $existing_guest_id
+            );
+            $stmt->execute();
+            $linked = $stmt->affected_rows === 1;
+            $stmt->close();
 
-        if ($stmt->execute()) {
-            $success = true;
+            if ($linked) {
+                $success = true;
+                $linked_existing_record = true;
+            } else {
+                $errors[] = "That hospital record was just updated elsewhere. Please try again.";
+            }
         } else {
-            $errors[] = "Something went wrong while creating your account. Please try again.";
+            $stmt = $conn->prepare("
+                INSERT INTO users
+                    (role, phone_number, password, email, first_name, last_name, birthdate, philhealth_id, sex, address, priority_type)
+                VALUES
+                    ('patient', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->bind_param(
+                "ssssssssss",
+                $phone_number,
+                $hashed_password,
+                $email_value,
+                $first_name,
+                $last_name,
+                $birthdate_value,
+                $philhealth_value,
+                $sex_value,
+                $address_value,
+                $priority_type
+            );
+
+            if ($stmt->execute()) {
+                $success = true;
+            } else {
+                $errors[] = "Something went wrong while creating your account. Please try again.";
+            }
+            $stmt->close();
         }
-        $stmt->close();
     }
 }
 ?>
@@ -149,6 +219,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create an Account - GabayMed</title>
     <link rel="stylesheet" href="assets/css/auth.css">
+    <noscript>
+        <style>
+            body {
+                opacity: 1 !important;
+            }
+        </style>
+    </noscript>
 </head>
 
 <body>
@@ -182,7 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- RIGHT: Form panel -->
         <div class="auth-form-panel">
-            <a href="index.html" class="auth-back-link">&larr; Back to Home</a>
+            <a href="index.php" class="auth-back-link">&larr; Back to Home</a>
 
             <div class="auth-form-container">
 
@@ -190,7 +267,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <h2 class="auth-title">Account created!</h2>
                     <div class="success-banner">
-                        Your patient account has been created successfully.
+                        <?php if ($linked_existing_record): ?>
+                            We found an existing hospital record under this phone number and connected it to your new online account.
+                        <?php else: ?>
+                            Your patient account has been created successfully.
+                        <?php endif; ?>
                     </div>
                     <a href="login.php" class="btn-primary" style="display:block; text-align:center; text-decoration:none; line-height:1.4;">
                         Continue to Sign In
@@ -266,6 +347,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </div>
 
                         <div class="form-group">
+                            <label for="priority_type">Priority Lane <span style="color:#A8B5B5; font-weight:400;">(optional)</span></label>
+                            <select id="priority_type" name="priority_type">
+                                <option value="regular" <?= (($_POST['priority_type'] ?? 'regular') === 'regular') ? 'selected' : '' ?>>Regular</option>
+                                <option value="senior" <?= (($_POST['priority_type'] ?? '') === 'senior') ? 'selected' : '' ?>>Senior Citizen</option>
+                                <option value="pwd" <?= (($_POST['priority_type'] ?? '') === 'pwd') ? 'selected' : '' ?>>PWD</option>
+                                <option value="ip" <?= (($_POST['priority_type'] ?? '') === 'ip') ? 'selected' : '' ?>>Indigenous Peoples (IP)</option>
+                            </select>
+                            <span style="color:#A8B5B5; font-weight:400; font-size:12.5px;">Verified against ID at your first in-person check-in — this just tells the front desk what to check for.</span>
+                        </div>
+
+                        <div class="form-group">
                             <label for="password">Password</label>
                             <div class="password-field-wrapper">
                                 <input type="password" id="password" name="password" placeholder="At least 8 characters" required
@@ -311,6 +403,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     </div>
 
+    <script src="assets/js/page-transitions.js"></script>
     <script>
         // Toggles a password field between hidden (••••) and visible (plain text)
         function togglePassword(fieldId, button) {

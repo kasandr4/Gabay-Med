@@ -1,0 +1,385 @@
+/* prescriptions.css
+   GabayMed — Patient Prescriptions
+   Additive styles only. Reuses the design tokens already defined in
+   dashboard.css (--primary, --text-dark, --text-muted, --border-color,
+   --white, --bg-light) so this page matches the rest of the Patient Portal.
+*/
+
+.rx-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.rx-table th,
+.rx-table td {
+    padding: 12px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 14px;
+}
+
+.rx-table th {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.rx-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.rx-muted {
+    color: var(--text-muted);
+}
+
+/* Reuses the existing .status-chip base (see dashboard.css) and just adds
+   the two variants this page needs, matching the same visual language as
+   .status-chip-pending / .status-chip-confirmed. */
+.status-chip-discharged {
+    background: #EAF7F2;
+    color: #1F6F5C;
+}
+
+.status-chip-confined {
+    background: rgba(11, 143, 172, 0.12);
+    color: var(--primary-dark);
+}
+
+.btn-view-rx {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--primary);
+    background: #fff;
+    color: var(--primary-dark);
+    font-weight: 600;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+/* Hover - becomes a filled button, same interaction as Mark Completed / Cancel */
+.btn-view-rx:hover {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+
+/* Click effect */
+.btn-view-rx:active {
+    background: var(--primary-dark);
+    border-color: var(--primary-dark);
+    transform: scale(0.98);
+}
+
+/* Disabled */
+.btn-view-rx:disabled {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    color: #9ca3af;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ----- Modal ----- */
+
+.rx-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(31, 45, 45, 0.5);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 500;
+}
+
+.rx-modal-overlay.overlay-visible {
+    display: flex;
+}
+
+.rx-modal {
+    background: var(--white);
+    border-radius: 16px;
+    box-shadow: 0 20px 48px rgba(31, 45, 45, 0.18);
+    width: 100%;
+    max-width: 740px;
+    max-height: 88vh;
+    overflow-y: auto;
+}
+
+.rx-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    border-radius: 16px 16px 0 0;
+    z-index: 1;
+}
+
+.rx-modal-header-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.rx-modal-header-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: rgba(11, 143, 172, 0.1);
+    color: var(--primary-dark);
+    flex-shrink: 0;
+}
+
+.rx-modal-header h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.rx-modal-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: var(--bg-light);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.rx-modal-close:hover {
+    background: #EAF0F0;
+    color: var(--text-dark);
+}
+
+.rx-modal-body {
+    padding: 22px 28px 26px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/* Doctor / Date metadata — two columns on desktop, one on mobile */
+.rx-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.rx-meta-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--bg-light);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.rx-meta-item:hover {
+    border-color: var(--primary);
+    background: var(--white);
+}
+
+.rx-meta-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--primary-dark);
+    flex-shrink: 0;
+}
+
+.rx-meta-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.rx-detail-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.rx-detail-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+/* Diagnosis — subtle accent card */
+.rx-diagnosis-card {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(11, 143, 172, 0.06);
+    border: 1px solid rgba(11, 143, 172, 0.18);
+    border-left: 4px solid var(--primary);
+}
+
+.rx-diagnosis-card .rx-detail-label {
+    color: var(--primary-dark);
+    margin-bottom: 6px;
+}
+
+.rx-diagnosis-text {
+    margin: 0;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text-dark);
+    line-height: 1.5;
+}
+
+/* Notes / Instructions — bordered container */
+.rx-notes-card {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(11, 143, 172, 0.06);
+    border: 1px solid rgba(11, 143, 172, 0.18);
+    border-left: 4px solid var(--primary);
+}
+
+.rx-notes-card .rx-detail-label {
+    color: var(--primary-dark);
+    margin-bottom: 6px;
+}
+
+.rx-notes-text {
+    margin: 0;
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text-dark);
+    line-height: 1.5;
+}
+
+/* Medications */
+.rx-medicines-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.rx-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.rx-section-title svg {
+    color: var(--primary-dark);
+}
+
+.rx-medicines-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.rx-medicine-card {
+    padding: 14px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--white);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rx-medicine-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 4px 14px rgba(31, 45, 45, 0.08);
+}
+
+.rx-medicine-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.rx-medicine-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: rgba(123, 193, 183, 0.2);
+    color: var(--primary-dark);
+    flex-shrink: 0;
+}
+
+.rx-medicine-name {
+    font-size: 15.5px;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.rx-medicine-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.rx-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    font-size: 12.5px;
+    color: var(--text-dark);
+}
+
+.rx-chip-label {
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 10.5px;
+    letter-spacing: 0.03em;
+}
+
+@media (max-width: 640px) {
+    .rx-meta-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .rx-modal-header,
+    .rx-modal-body {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    .rx-table {
+        font-size: 13px;
+    }
+}

@@ -1,0 +1,195 @@
+
+
+/* ---------- Green accent (doctor-dashboard.css only ships teal/blue/amber/red) ---------- */
+:root {
+    --green: #22a06b;
+    --green-light: #e7f7f0;
+}
+
+/* ---------- Medicine stock status pills (reproduced from pharmacist-dashboard.css) ---------- */
+
+.status-normal {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+.status-low-stock {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.status-near-expiry {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.status-expired {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.status-out-of-stock {
+    background: var(--red);
+    color: #ffffff;
+}
+
+/* ---------- Reconciliation Match/Mismatch pills (reproduced from pharmacist-dashboard.css) ---------- */
+
+.status-match {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+.status-mismatch {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+/* ---------- On-time / delayed delivery pills (new to this page) ---------- */
+
+.status-on-time {
+    background: var(--green-light);
+    color: var(--green);
+}
+
+.status-delayed {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+/* ---------- Back link to the Hospital Reports hub ---------- */
+
+.reports-back-link {
+    display: inline-block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-decoration: none;
+    margin-bottom: 8px;
+}
+
+.reports-back-link:hover {
+    color: var(--teal-dark);
+}
+
+/* ---------- Report card grid (reproduced from pharmacist-dashboard.css) ---------- */
+
+.reports-filter-bar {
+    margin-bottom: 24px;
+}
+
+.reports-filter-bar .toolbar-filters {
+    align-items: center;
+}
+
+.inventory-search {
+    flex: 1;
+    min-width: 220px;
+    max-width: 320px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    font-family: inherit;
+}
+
+.inventory-search:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.reports-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 28px;
+}
+
+.report-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.report-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-sm);
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.report-card-title {
+    margin: 0;
+    font-size: 15.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.report-card-desc {
+    margin: -4px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.report-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+}
+
+.report-card-actions .btn {
+    flex: 1;
+    min-width: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.report-preview-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-sm {
+    padding: 7px 14px;
+    font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+    .reports-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .reports-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .report-card-actions .btn {
+        flex: 1 1 auto;
+    }
+}
+
+@media print {
+
+    .sidebar,
+    .mobile-topbar,
+    .reports-filter-bar,
+    .reports-grid,
+    .page-footer,
+    .report-preview-header-actions {
+        display: none !important;
+    }
+}

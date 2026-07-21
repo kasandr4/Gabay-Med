@@ -1,0 +1,213 @@
+/* ============================================
+   GabayMed - Appointment History Stylesheet
+   ============================================ */
+
+.no-padding {
+  padding: 0;
+  overflow: hidden;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.history-table thead th {
+  background: var(--bg-light);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.history-table tbody tr {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.history-table tbody tr:hover {
+  background: var(--bg-light);
+}
+
+.history-table tbody tr:not(:last-child) {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.history-table td {
+  padding: 14px 20px;
+  font-size: 13.5px;
+  color: var(--text-dark);
+}
+
+.ref-cell {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+/* Status chip variants for past-appointment statuses */
+.status-chip-completed {
+  background: #EAF7F2;
+  color: #1F6F5C;
+}
+
+.status-chip-no_show {
+  background: #FDEDED;
+  color: var(--error);
+}
+
+.status-chip-cancelled {
+  background: #F0F0F0;
+  color: var(--text-muted);
+}
+
+.link-back-top {
+  display: inline-block;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-bottom: 10px;
+}
+
+.link-back-top:hover {
+  color: var(--primary);
+}
+
+.outcome-box {
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border-color);
+}
+
+.outcome-box p {
+  font-size: 14px;
+  color: var(--text-dark);
+}
+
+/* ===== Appointment Detail Modal ===== */
+.modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 45, 45, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.modal-backdrop.modal-visible {
+  display: block;
+  opacity: 1;
+}
+
+.modal-card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -44%) scale(0.97);
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  max-height: 85vh;
+  background: var(--white);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(31, 45, 45, 0.2);
+  z-index: 101;
+  display: none;
+  flex-direction: column;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  overflow: hidden;
+}
+
+.modal-card.modal-visible {
+  display: flex;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+body.modal-open {
+  overflow: hidden; /* prevent page scrolling while modal is open */
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-dark);
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  display: flex;
+  transition: background 0.12s ease;
+}
+
+.modal-close-btn:hover {
+  background: var(--bg-light);
+  color: var(--text-dark);
+}
+
+.modal-close-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* Make table rows clearly show they're clickable */
+.history-row-clickable {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.history-row-clickable:hover {
+  background: var(--bg-light);
+}
+
+@media (max-width: 600px) {
+  .modal-card {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: translateY(20px) scale(0.98);
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .modal-card.modal-visible {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 700px) {
+  .history-table {
+    font-size: 12.5px;
+  }
+  .history-table thead th,
+  .history-table td {
+    padding: 10px 12px;
+  }
+}

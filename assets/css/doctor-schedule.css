@@ -1,0 +1,747 @@
+/* assets/css/doctor-schedule.css
+   Admin Portal — Doctor Schedule Management (UI ONLY, monthly calendar).
+   Layered on top of doctor-dashboard.css (base app-shell/card/stat-card/
+   modal-backdrop/modal-box/status-pill styles) and admin-dashboard.css.
+   Only the pieces unique to this page live here: the doctor roster
+   selector, the legend, the monthly calendar grid + cell states, quick
+   actions, and the day-detail panel's form fields. */
+
+/* ---- Doctor roster selector ------------------------------------------ */
+
+.ds-doctor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 14px;
+}
+
+.ds-doctor-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    text-decoration: none;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.ds-doctor-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.ds-doctor-card-active {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 1px var(--teal);
+}
+
+.ds-doctor-avatar {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.ds-doctor-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.ds-doctor-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ds-doctor-dept {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.ds-status-active { background: var(--teal-light); color: var(--teal-dark); }
+.ds-status-pending { background: var(--amber-light); color: #92650f; }
+.ds-status-deactivated { background: var(--bg); color: var(--text-muted); }
+
+/* ---- Deactivated-doctor warning banner -------------------------------- */
+
+.ds-warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    border-radius: var(--radius-md);
+    background: var(--amber-light);
+    color: #92650f;
+    font-size: 13.5px;
+    font-weight: 500;
+}
+
+.ds-warning-banner svg {
+    flex: 0 0 auto;
+}
+
+/* ---- Monthly summary ---------------------------------------------------- */
+
+.ds-summary-grid {
+    margin-bottom: 20px;
+}
+
+/* ---- Legend -------------------------------------------------------------- */
+
+.ds-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    padding: 4px 2px 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+}
+
+.ds-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.ds-legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.ds-swatch-available { background: var(--teal); }
+.ds-swatch-off_duty { background: var(--text-muted); }
+.ds-swatch-leave { background: var(--red); }
+.ds-swatch-half_day { background: var(--amber); }
+
+/* ---- Quick actions ----------------------------------------------------- */
+
+.ds-quick-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.ds-month-select {
+    min-width: 150px;
+}
+
+/* ---- Calendar grid ------------------------------------------------------ */
+
+.ds-calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.ds-calendar-weekdays span {
+    text-align: center;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    padding-bottom: 4px;
+}
+
+.ds-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.ds-calendar-cell-blank {
+    background: transparent;
+}
+
+.ds-calendar-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-height: 96px;
+    padding: 10px 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.ds-calendar-cell:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.ds-calendar-cell:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.ds-cell-weekend {
+    background: var(--bg);
+}
+
+.ds-cell-today {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 1px var(--teal);
+}
+
+.ds-cell-today-badge {
+    position: absolute;
+    top: -9px;
+    right: 10px;
+    font-size: 9.5px;
+    padding: 2px 7px;
+}
+
+.ds-cell-daynum {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.ds-cell-shift {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+/* Left accent bar per status, so the calendar reads at a glance even
+   before looking at the pill text. */
+.ds-cell-available { border-left: 3px solid var(--teal); }
+.ds-cell-off_duty { border-left: 3px solid var(--border); }
+.ds-cell-leave { border-left: 3px solid var(--red); }
+.ds-cell-half_day { border-left: 3px solid var(--amber); }
+
+.ds-status-pill-available { background: var(--teal-light); color: var(--teal-dark); }
+.ds-status-pill-off_duty { background: var(--bg); color: var(--text-muted); }
+.ds-status-pill-leave { background: var(--red-light); color: var(--red); }
+.ds-status-pill-half_day { background: var(--amber-light); color: #92650f; }
+
+.ds-status-pill-available,
+.ds-status-pill-off_duty,
+.ds-status-pill-leave,
+.ds-status-pill-half_day {
+    font-size: 10.5px;
+    padding: 2px 8px;
+}
+
+.ds-editor-hint {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    margin: 4px 2px 0;
+}
+
+/* ---- Day detail panel (reuses the .modal-backdrop/.modal-box pattern
+   already established by patient-records-modal.css / user-management.css /
+   inventory-procurement.css; redefined locally since none of those
+   stylesheets are loaded on this page) --------------------------------- */
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 23, 30, 0.52);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.modal-backdrop.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.modal-box {
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(10px) scale(0.98);
+    transition: transform 0.2s ease;
+}
+
+.modal-backdrop.active .modal-box {
+    transform: translateY(0) scale(1);
+}
+
+.ds-modal-backdrop {
+    /* Anchor the panel to the right edge on desktop instead of dead
+       centering it, so it reads as a side panel rather than a dialog. */
+    justify-content: flex-end;
+    padding: 0;
+}
+
+.ds-modal-box {
+    width: min(440px, 100vw);
+    height: 100vh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateX(24px);
+}
+
+.ds-modal-backdrop.active .ds-modal-box {
+    transform: translateX(0);
+}
+
+.ds-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 22px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.ds-modal-header h3 {
+    margin: 0;
+    font-size: 16.5px;
+}
+
+.ds-modal-body {
+    padding: 20px 22px 22px;
+    overflow-y: auto;
+}
+
+.ds-modal-body .um-field input[readonly] {
+    background: var(--bg);
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+.ds-modal-body .um-field input:disabled,
+.ds-modal-body .um-field select:disabled {
+    background: var(--bg);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+/* ---- Form field + modal-action primitives (mirrors the .um-field /
+   .um-form-row / .um-modal-actions pattern from user-management.css,
+   redefined locally since that stylesheet isn't loaded on this page) --- */
+
+.um-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    display: flex;
+}
+
+.um-modal-close:hover {
+    background: var(--bg);
+    color: var(--text-primary);
+}
+
+.um-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.um-field input,
+.um-field select,
+.um-field textarea {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--text-primary);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    resize: vertical;
+}
+
+.um-field input:focus,
+.um-field select:focus,
+.um-field textarea:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.um-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.um-form-row .um-field {
+    margin-bottom: 14px;
+}
+
+.um-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+/* ---- Toasts (scoped to this page, same pattern as user-management.css) - */
+
+.ds-toast-host {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 2200;
+}
+
+.ds-toast {
+    background: var(--sidebar-bg);
+    color: #fff;
+    padding: 12px 18px;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    font-size: 13.5px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.ds-toast-show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ---- Responsive ---------------------------------------------------------- */
+
+@media (max-width: 900px) {
+    .ds-calendar-weekdays span:nth-child(n) {
+        font-size: 10px;
+    }
+
+    .ds-calendar-cell {
+        min-height: 78px;
+        padding: 8px;
+    }
+
+    .ds-cell-shift {
+        display: none;
+    }
+}
+
+@media (max-width: 640px) {
+    .ds-calendar-weekdays,
+    .ds-calendar-grid {
+        gap: 6px;
+    }
+
+    .ds-calendar-cell {
+        min-height: 64px;
+    }
+
+    .ds-cell-daynum {
+        font-size: 13px;
+    }
+
+    .ds-status-pill-available,
+    .ds-status-pill-off_duty,
+    .ds-status-pill-leave,
+    .ds-status-pill-half_day {
+        font-size: 9px;
+        padding: 1px 6px;
+    }
+
+    .ds-modal-box {
+        width: 100vw;
+    }
+}
+/* =========================================================================
+   Tabbed interface — Monthly Schedule / Weekly Overrides
+   ========================================================================= */
+
+.ds-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg);
+    width: fit-content;
+    max-width: 100%;
+}
+
+.ds-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 9px 18px;
+    border-radius: calc(var(--radius-md) - 4px);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.ds-tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.ds-tab-btn.active {
+    background: var(--surface);
+    color: var(--teal-dark);
+    box-shadow: var(--shadow-md);
+}
+
+.ds-tab-panel {
+    display: none;
+}
+
+.ds-tab-panel.active {
+    display: block;
+}
+
+/* The Monthly Schedule tab mixes the same kind of direct-sibling mix
+   (doctor roster card, conditional warning banner, stats grid, calendar
+   card) as the Weekly Overrides tab below, so it gets the same
+   flex + gap treatment for reliably non-overlapping spacing. */
+#ds-tab-panel-monthly.active {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+#ds-tab-panel-monthly.active > * {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* The Weekly Overrides tab mixes a bare banner div, conditional warning
+   banner, a stats grid, a legend, and card sections as direct siblings.
+   Rather than rely on each of those (from mixed stylesheets) to carry
+   perfectly matching, non-colliding margins, this tab panel takes full
+   control of vertical spacing via flex + gap and neutralizes each child's
+   own top/bottom margin so nothing can visually overlap. */
+#ds-tab-panel-weekly.active {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+#ds-tab-panel-weekly.active > * {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* =========================================================================
+   Weekly Overrides tab
+   ========================================================================= */
+
+.wo-intro-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    border-radius: var(--radius-md);
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    font-size: 13.5px;
+    line-height: 1.5;
+}
+
+.wo-intro-banner svg {
+    flex: 0 0 auto;
+    margin-top: 1px;
+}
+
+/* ---- Legend (reuses .ds-legend layout; emoji swap in for color swatches) */
+
+.wo-legend-dot {
+    font-size: 12px;
+    line-height: 1;
+}
+
+/* ---- Table -------------------------------------------------------------- */
+
+.wo-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.wo-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    font-size: 13.5px;
+}
+
+.wo-table thead th {
+    text-align: left;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    padding: 12px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.wo-table tbody td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.wo-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.wo-table tbody tr:hover {
+    background: var(--bg);
+}
+
+.wo-row-today td:first-child {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.wo-today-badge {
+    font-size: 9.5px;
+    padding: 2px 7px;
+    background: var(--teal-light);
+    color: var(--teal-dark);
+}
+
+.wo-original-cell {
+    color: var(--text-secondary);
+}
+
+.wo-reason-cell {
+    color: var(--text-secondary);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wo-action-cell {
+    display: flex;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.wo-action-cell .btn {
+    padding: 6px 12px;
+    font-size: 12.5px;
+}
+
+/* ---- Status pills for override statuses --------------------------------
+   Available/Half Day/Emergency Leave reuse the monthly palette; Training,
+   Meeting, and Unavailable are unique to overrides so they get their own
+   colors, distinct from the monthly legend. */
+
+.wo-status-pill-no_change { background: var(--bg); color: var(--text-muted); }
+.wo-status-pill-available { background: var(--teal-light); color: var(--teal-dark); }
+.wo-status-pill-half_day { background: var(--amber-light); color: #92650f; }
+.wo-status-pill-emergency_leave { background: var(--red-light); color: var(--red); }
+.wo-status-pill-training { background: #e5edfd; color: #2f5fd6; }
+.wo-status-pill-meeting { background: #f0e9f9; color: #7c4fc7; }
+.wo-status-pill-unavailable { background: var(--sidebar-bg); color: #fff; }
+
+.wo-status-pill-no_change,
+.wo-status-pill-available,
+.wo-status-pill-half_day,
+.wo-status-pill-emergency_leave,
+.wo-status-pill-training,
+.wo-status-pill-meeting,
+.wo-status-pill-unavailable {
+    font-size: 11px;
+    padding: 3px 9px;
+}
+
+/* Left accent on the row so overridden days scan quickly down the table. */
+.wo-row-half_day { box-shadow: inset 3px 0 0 var(--amber); }
+.wo-row-emergency_leave { box-shadow: inset 3px 0 0 var(--red); }
+.wo-row-training { box-shadow: inset 3px 0 0 #2f5fd6; }
+.wo-row-meeting { box-shadow: inset 3px 0 0 #7c4fc7; }
+.wo-row-unavailable { box-shadow: inset 3px 0 0 var(--sidebar-bg); }
+
+/* ---- Create/Edit Override modal (centered, reuses .modal-backdrop /
+   .modal-box / .ds-modal-header / .ds-modal-body / .um-field primitives
+   already defined above; this variant just re-centers instead of the
+   side-panel treatment used for the day editor) ------------------------- */
+
+.ds-modal-box-centered {
+    width: min(480px, 100%);
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ds-modal-box-centered .ds-modal-body {
+    overflow-y: auto;
+}
+
+.wo-modal-hint {
+    margin: 2px 2px 14px;
+}
+
+@media (max-width: 640px) {
+    .ds-tabs {
+        width: 100%;
+    }
+
+    .ds-tab-btn {
+        flex: 1 1 0;
+        text-align: center;
+    }
+
+    .wo-action-cell {
+        flex-direction: column;
+    }
+}

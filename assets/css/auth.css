@@ -232,12 +232,26 @@ select:focus {
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   margin-top: 8px;
 }
 
 .btn-primary:hover {
   background: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(11, 143, 172, 0.28);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .auth-footer-text {
@@ -397,5 +411,29 @@ select:focus {
     position: static;
     align-self: flex-start;
     margin-bottom: 28px;
+  }
+}
+
+/* ===== Page transitions (assets/js/page-transitions.js) ===== */
+body {
+  opacity: 0;
+}
+
+body.pt-ready {
+  transition: opacity 0.28s ease;
+}
+
+body.pt-visible {
+  opacity: 1;
+}
+
+body.pt-leaving {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    opacity: 1;
+    transition: none;
   }
 }
