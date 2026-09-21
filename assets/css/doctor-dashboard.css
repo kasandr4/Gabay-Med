@@ -239,6 +239,47 @@ button {
     transition: background 0.12s ease;
 }
 
+/* Icon + message/time layout — icon sized/positioned to sit next to the
+   first line of text, not vertically centered against the whole block
+   (a 2-line message would otherwise leave the icon looking oddly high). */
+.notification-item-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.notification-item-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-icon {
+    flex-shrink: 0;
+    display: flex;
+    margin-top: 1px;
+}
+
+.notification-icon-info {
+    color: var(--blue);
+}
+
+.notification-icon-success {
+    /* --green isn't defined in this shared stylesheet — only per-page in
+       admin-dashboard.css / pharmacist-dashboard.css (same "each page
+       redefines shared utility classes locally" convention used
+       throughout this codebase) — fallback matches their exact value so
+       this still renders correctly wherever --green isn't in scope. */
+    color: var(--green, #22a06b);
+}
+
+.notification-icon-warning {
+    color: var(--amber);
+}
+
+.notification-icon-critical {
+    color: var(--red);
+}
+
 .notification-item-animated {
     opacity: 0;
     transform: translateX(16px);
@@ -782,6 +823,19 @@ button {
     color: var(--text-muted);
 }
 
+/* BUG FIX (2026-07-23): without this, .empty-state's own `display: flex`
+   above has the same specificity as the browser's built-in
+   `[hidden] { display: none }` rule, so this stylesheet wins the cascade
+   and the hidden attribute gets silently ignored — an empty-state message
+   stays visible even while toggled hidden by JS (e.g. reorder-insights.php's
+   "No medicines match your filters." showing up underneath a table that
+   already has visible rows). This affects every page that uses
+   .empty-state + [hidden], not just one — this file is the shared base
+   stylesheet loaded across all portals. */
+.empty-state[hidden] {
+    display: none;
+}
+
 .empty-illustration {
     width: 96px;
     height: 96px;
@@ -993,6 +1047,35 @@ button {
     font-weight: 500;
     font-family: inherit;
     cursor: pointer;
+}
+
+/* BUG FIX (2026-07-23): .search-input is used in reorder-insights.php and
+   expiry-tracking.php's toolbar-filters, but was never actually defined
+   anywhere — those inputs were falling back to unstyled browser defaults
+   (no border-radius, no consistent height with the .filter-select next to
+   them). Matches .filter-select's sizing/border so the pair reads as one
+   toolbar instead of two mismatched controls. */
+.search-input {
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    font-family: inherit;
+    min-width: 220px;
+    flex: 1 1 220px;
+}
+
+.search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.search-input:focus,
+.filter-select:focus {
+    outline: none;
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px var(--teal-light);
 }
 
 .status-completed {
@@ -1841,6 +1924,17 @@ button {
     background: var(--bg);
 }
 
+/* Lab-test rows only need Test/Notes/Remove (3 fields, not 4) - this used
+   to be set as an inline style in JS, which defeats the mobile media
+   query below (inline styles always win over stylesheet rules,
+   including ones inside @media blocks), so the row stayed locked to a
+   2-field-wide desktop layout on narrow screens and the Notes input
+   overflowed off the card edge. A class participates in the cascade
+   correctly, so the same mobile override below now applies to this too. */
+.medicine-row-3col {
+    grid-template-columns: 1fr 1fr 40px;
+}
+
 .medicine-row > div {
     display: flex;
     flex-direction: column;
@@ -1872,23 +1966,6 @@ button {
     letter-spacing: 0.3px;
     display: block;
     margin: 0;
-}
-
-.medicine-stock-hint {
-    font-size: 11.5px;
-    color: var(--text-muted);
-    margin: 2px 0 0;
-    min-height: 14px;
-}
-
-.medicine-stock-hint-warning {
-    color: var(--amber);
-    font-weight: 600;
-}
-
-.medicine-stock-hint-danger {
-    color: var(--red);
-    font-weight: 600;
 }
 
 .medicine-remove-btn {
@@ -2345,7 +2422,8 @@ select.form-input {
         grid-template-columns: 1fr;
     }
 
-    .medicine-row {
+    .medicine-row,
+    .medicine-row-3col {
         grid-template-columns: 1fr;
         gap: 8px;
     }

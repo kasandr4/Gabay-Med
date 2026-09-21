@@ -229,10 +229,16 @@ if ($admitMode) {
             </header>
 
             <?php if ($flash): ?>
-                <section class="card" style="border-left: 4px solid <?php echo $flash['type'] === 'error' ? 'var(--red)' : 'var(--teal)'; ?>; margin-bottom: 20px;">
+                <section class="card" style="border-left: 4px solid <?php echo $flash['type'] === 'error' ? 'var(--red)' : 'var(--teal)'; ?>; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
                     <p style="margin: 0; font-size: 14px; color: <?php echo $flash['type'] === 'error' ? 'var(--red)' : 'var(--text-primary)'; ?>;">
                         <?php echo htmlspecialchars($flash['message']); ?>
                     </p>
+                    <?php if (!empty($flash['has_lab_order']) && !empty($flash['consultation_id'])): ?>
+                        <a href="print-lab-order.php?consultation_id=<?php echo (int) $flash['consultation_id']; ?>"
+                            target="_blank" class="btn btn-secondary" style="white-space: nowrap;">
+                            Print Lab Order
+                        </a>
+                    <?php endif; ?>
                 </section>
             <?php endif; ?>
 

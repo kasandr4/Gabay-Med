@@ -32,18 +32,58 @@ if ($patient_status === 'confined') {
     exit;
 }
 
-// Pull the real upcoming appointment now that the booking flow (1.5) exists
+// Pull ALL upcoming appointments, not just the soonest one.
+//
+// FIXED 2026-08-08: this used to be LIMIT 1 / fetch_assoc, from before
+// "one active appointment per department" was decided (see
+// patient/book-appointment.php's $active_appointments header comment,
+// settled 2026-08-04). Once a patient could hold more than one active
+// appointment at a time, this silently hid every appointment except
+// whichever was soonest - the FIRST screen a patient sees after login
+// was quietly incomplete for anyone with concurrent care across
+// departments, with no indication a second appointment even existed
+// unless they specifically visited book-appointment.php's own list.
 $stmt = $conn->prepare("
     SELECT a.appointment_id, a.status, a.slot_start, a.created_at, d.department_name, u.first_name AS doctor_first, u.last_name AS doctor_last
     FROM appointments a
     JOIN departments d ON a.department_id = d.department_id
     JOIN users u ON a.doctor_id = u.user_id
     WHERE a.patient_id = ? AND a.status IN ('pending', 'confirmed')
-    ORDER BY a.slot_start ASC LIMIT 1
+    ORDER BY a.slot_start ASC
 ");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
-$upcoming_appointment = $stmt->get_result()->fetch_assoc();
+$upcoming_appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+// For the "just booked" banner: the newest one by created_at, NOT the
+// first in $upcoming_appointments (which is sorted by soonest slot_start
+// for display, so the appointment the patient just booked might not be
+// first in that list at all if they already had an earlier one pending
+// in a different department).
+$just_booked_appointment = null;
+foreach ($upcoming_appointments as $appt) {
+    if ($just_booked_appointment === null || $appt['created_at'] > $just_booked_appointment['created_at']) {
+        $just_booked_appointment = $appt;
+    }
+}
+
+// Upcoming follow-ups (2026-08-08): follow-up-process.php notifies the
+// patient with a link to this page, but until now nothing here (or on
+// appointment-history.php, which is past-visits-only by design - see its
+// own header comment) ever actually showed a follow_ups row. The
+// notification pointed at a page that couldn't show what it promised.
+$stmt = $conn->prepare("
+    SELECT f.follow_up_id, f.followup_date, f.followup_time, f.reason,
+           u.first_name AS doctor_first, u.last_name AS doctor_last
+    FROM follow_ups f
+    JOIN users u ON u.user_id = f.doctor_id
+    WHERE f.patient_id = ? AND f.status = 'scheduled' AND f.followup_date >= CURDATE()
+    ORDER BY f.followup_date ASC, f.followup_time ASC
+");
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$upcoming_followups = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt->close();
 
 $just_booked = isset($_GET['booked']);
@@ -55,7 +95,8 @@ $just_booked = isset($_GET['booked']);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - GabayMed</title>
-    <link rel="stylesheet" href="../assets/css/dashboard.css">
+    <?php require_once '../includes/asset_helpers.php'; ?>
+    <link rel="stylesheet" href="<?= htmlspecialchars(asset_url('../assets/css/dashboard.css')) ?>">
     <script src="../assets/js/qrcode.min.js"></script>
 </head>
 
@@ -81,10 +122,10 @@ $just_booked = isset($_GET['booked']);
                 </div>
             </div>
 
-            <?php if ($just_booked && $upcoming_appointment): ?>
+            <?php if ($just_booked && $just_booked_appointment): ?>
                 <div class="success-banner">
                     Your appointment has been booked successfully.
-                    Your reference number is <strong><?= htmlspecialchars(format_appointment_reference($upcoming_appointment['appointment_id'], $upcoming_appointment['created_at'])) ?></strong> — please keep this for your records.
+                    Your reference number is <strong><?= htmlspecialchars(format_appointment_reference($just_booked_appointment['appointment_id'], $just_booked_appointment['created_at'])) ?></strong> — please keep this for your records.
                 </div>
             <?php endif; ?>
 
@@ -104,46 +145,70 @@ $just_booked = isset($_GET['booked']);
                 </div>
             <?php endif; ?>
 
-            <!-- Upcoming Appointment card -->
+            <!-- Book an Appointment card (2026-09-17) — two entry points into
+                 patient/book-appointment.php: the normal flow (soonest
+                 available, rolling ~15-day window) and "Advance Booking"
+                 (?mode=advance, pre-selects a later-month picker on that
+                 page — see its own $advance_mode comment). Shown
+                 unconditionally, even when the patient already has an
+                 active appointment; book-appointment.php itself is what
+                 enforces "one active appointment at a time" and shows the
+                 right messaging for that, so this card doesn't need to
+                 duplicate that check just to decide whether to render. -->
             <div class="card">
-                <div class="card-title">Upcoming Appointment</div>
+                <div class="card-title">Book an Appointment</div>
+                <p style="font-size:13.5px; color:var(--text-muted); margin:-4px 0 14px;">
+                    Need to be seen soon, or want to plan ahead? Either way, we'll match you to the right department and doctor automatically.
+                </p>
+                <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <a href="book-appointment.php" class="btn btn-primary">Book Appointment</a>
+                    <a href="book-appointment.php?mode=advance" class="btn btn-secondary">Advance Booking (next month+)</a>
+                </div>
+            </div>
 
-                <?php if ($upcoming_appointment):
-                    $ref_number = format_appointment_reference($upcoming_appointment['appointment_id'], $upcoming_appointment['created_at']);
-                ?>
-                    <div class="appointment-card-wrapper">
-                        <a href="appointment-detail.php?appointment_id=<?= $upcoming_appointment['appointment_id'] ?>" class="appointment-card appointment-card-clickable">
-                            <div class="appointment-info">
-                                <div class="appointment-department"><?= htmlspecialchars($upcoming_appointment['department_name']) ?></div>
-                                <div class="appointment-meta">
-                                    Dr. <?= htmlspecialchars($upcoming_appointment['doctor_last']) ?>
-                                    &middot; <?= date('M j, Y \a\t g:i A', strtotime($upcoming_appointment['slot_start'])) ?>
+            <!-- Upcoming Appointment(s) card -->
+            <div class="card">
+                <div class="card-title">
+                    Upcoming Appointment<?= count($upcoming_appointments) > 1 ? 's' : '' ?>
+                </div>
+
+                <?php if (!empty($upcoming_appointments)): ?>
+                    <?php foreach ($upcoming_appointments as $i => $appt): ?>
+                        <?php $ref_number = format_appointment_reference($appt['appointment_id'], $appt['created_at']); ?>
+                        <div class="appointment-card-wrapper" <?= $i > 0 ? 'style="margin-top:18px; padding-top:18px; border-top:1px solid var(--border-color);"' : '' ?>>
+                            <a href="appointment-detail.php?appointment_id=<?= $appt['appointment_id'] ?>" class="appointment-card appointment-card-clickable">
+                                <div class="appointment-info">
+                                    <div class="appointment-department"><?= htmlspecialchars($appt['department_name']) ?></div>
+                                    <div class="appointment-meta">
+                                        Dr. <?= htmlspecialchars($appt['doctor_last']) ?>
+                                        &middot; <?= date('M j, Y \a\t g:i A', strtotime($appt['slot_start'])) ?>
+                                    </div>
+                                    <div class="appointment-reference">
+                                        Ref: <?= htmlspecialchars($ref_number) ?>
+                                    </div>
                                 </div>
-                                <div class="appointment-reference">
-                                    Ref: <?= htmlspecialchars($ref_number) ?>
-                                </div>
+                                <span class="status-chip status-chip-<?= htmlspecialchars($appt['status']) ?>">
+                                    <?= ucfirst(htmlspecialchars($appt['status'])) ?>
+                                </span>
+                            </a>
+
+                            <div class="qr-code-box">
+                                <div id="qr-code-canvas-<?= (int) $appt['appointment_id'] ?>"></div>
+                                <div class="qr-code-label">Show this at the front desk</div>
                             </div>
-                            <span class="status-chip status-chip-<?= htmlspecialchars($upcoming_appointment['status']) ?>">
-                                <?= ucfirst(htmlspecialchars($upcoming_appointment['status'])) ?>
-                            </span>
-                        </a>
-
-                        <div class="qr-code-box">
-                            <div id="qr-code-canvas"></div>
-                            <div class="qr-code-label">Show this at the front desk</div>
                         </div>
-                    </div>
 
-                    <script>
-                        new QRCode(document.getElementById("qr-code-canvas"), {
-                            text: <?= json_encode($ref_number) ?>,
-                            width: 96,
-                            height: 96,
-                            colorDark: "#1F2D2D",
-                            colorLight: "#ffffff",
-                            correctLevel: QRCode.CorrectLevel.M
-                        });
-                    </script>
+                        <script>
+                            new QRCode(document.getElementById("qr-code-canvas-<?= (int) $appt['appointment_id'] ?>"), {
+                                text: <?= json_encode($ref_number) ?>,
+                                width: 96,
+                                height: 96,
+                                colorDark: "#1F2D2D",
+                                colorLight: "#ffffff",
+                                correctLevel: QRCode.CorrectLevel.M
+                            });
+                        </script>
+                    <?php endforeach; ?>
 
                     <div class="what-to-bring">
                         <div class="what-to-bring-header">
@@ -166,6 +231,41 @@ $just_booked = isset($_GET['booked']);
                     </div>
                 <?php endif; ?>
             </div>
+
+            <!-- Upcoming Follow-Up(s) card (2026-08-08) - see header comment
+                 above $upcoming_followups for why this exists: the
+                 notification sent when a doctor schedules one needs an
+                 actual page to point to. -->
+            <?php if (!empty($upcoming_followups)): ?>
+                <div class="card">
+                    <div class="card-title">
+                        Upcoming Follow-Up<?= count($upcoming_followups) > 1 ? 's' : '' ?>
+                    </div>
+                    <?php foreach ($upcoming_followups as $i => $fu): ?>
+                        <div class="appointment-card-wrapper" <?= $i > 0 ? 'style="margin-top:18px; padding-top:18px; border-top:1px solid var(--border-color);"' : '' ?>>
+                            <div class="appointment-card">
+                                <div class="appointment-info">
+                                    <div class="appointment-department">
+                                        Follow-up with Dr. <?= htmlspecialchars(trim($fu['doctor_first'] . ' ' . $fu['doctor_last'])) ?>
+                                    </div>
+                                    <div class="appointment-meta">
+                                        <?= date('M j, Y', strtotime($fu['followup_date'])) ?>
+                                        <?php if ($fu['followup_time']): ?>
+                                            &middot; <?= date('g:i A', strtotime($fu['followup_time'])) ?>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="appointment-reference">
+                                        <?= htmlspecialchars($fu['reason']) ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                    <div class="what-to-bring-note" style="margin-top:14px;">
+                        <span>ℹ️</span> This is a reminder from your doctor, not a booked time slot. Please arrive within normal clinic hours (8AM-4PM) on the date shown - no need to check in at a precise time for this.
+                    </div>
+                </div>
+            <?php endif; ?>
 
             <!-- ============ SECTION: Hospital Info ============ -->
             <h2 class="section-header">Hospital Info</h2>

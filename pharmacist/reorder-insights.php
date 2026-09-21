@@ -1,6 +1,6 @@
 <?php
 // pharmacist/reorder-insights.php
-// Module 3.9 — Reorder Point Insights (UI ONLY).
+// Module 3.9 — Reorder Point Insights.
 //
 // Direct answer to the panel's question: "when to order if the medicine
 // is fast-moving but won't be out of stock (yet)?" The existing Low
@@ -15,82 +15,116 @@
 // still need ordering *today* if it's moving fast enough to run out
 // before a new order would arrive.
 //
-// Real columns used: medicine_id, name, category, unit, current_stock,
-// minimum_stock, from the existing inventory_medicines table.
+// FIXED (2026-08-22): the historical-lead-time query against
+// purchase_order_deliveries/purchase_orders/purchase_requests broke when
+// 018_replace_procurement_with_funding_source.sql dropped all three
+// tables. Record Stock Batch (the table's replacement — see that
+// migration) logs stock the instant it arrives; there's no separate
+// "order placed" timestamp to compare against a "received" timestamp
+// anymore, so historical lead time genuinely isn't computable. Rather
+// than invent a substitute from medicine_batches.received_at gaps —
+// which would measure how often this pharmacy happens to restock, not
+// how long an order takes, and presenting that as "lead time" would be
+// misleading rather than just imprecise — every medicine now uses
+// the admin-configurable reorder_default_lead_time_days setting
+// (matches includes/reorder_point.php's same setting/fix, since these
+// two files intentionally duplicate this formula — see that file's
+// header for why).
 //
-// SCHEMA GAP: avg_daily_usage and lead_time_days are mocked below —
-// neither exists yet. avg_daily_usage needs a real consumption log (the
-// same missing piece flagged in Expiry Tracking / Storage Exit Scan —
-// there's no medicine_exit_log yet to compute a moving average from).
-// lead_time_days could come from supplier_bids.estimated_delivery once a
-// supplier has been used more than once for a medicine (average their
-// past delivery times), or a manual per-medicine default in the
-// meantime.
+//   - avg_daily_usage: rolling 30-day average from medicine_exit_log.units_deducted,
+//     per medicine. Divides by the number of days actually covered (capped
+//     at 30) rather than a flat 30, so a medicine with only a few days of
+//     log history isn't artificially under-averaged. Still real.
+//   - lead_time_days: always the default constant now — see FIXED note
+//     above.
 //
-// TODO(backend), if this gets wired up for real:
-//   1. Add a consumption log (dispensing events, or reuse
-//      medicine_exit_log once Storage Exit Scan is real) and compute a
-//      rolling N-day average daily usage per medicine.
-//   2. Compute lead_time_days from historical supplier_bids /
-//      purchase_orders instead of a flat per-medicine default.
-//   3. Reorder Point becomes a stored/derived value, and this page's
-//      "Reorder Now" list becomes the actual trigger for suggesting a
-//      new Purchase Request, instead of just the Low Stock alert.
+// One judgment call: a medicine with zero exit-log history has no
+// velocity to compute a reorder point from. Rather than guess a number,
+// its reorder point falls back to minimum_stock (the old flat rule) and
+// the row is flagged "No usage data yet" — see $noUsageData below.
 
 require_once '../includes/auth_guard.php';
 require_role('pharmacist');
 require_once '../config/db.php';
+require_once '../includes/system_settings.php';
 
-// Real query — same table Inventory View already uses.
+// CATEGORY RETIRED: this used to exclude Medical Supplies items (gloves,
+// syringes) from the reorder-point view. Those were leftover demo rows —
+// the pharmacy only stocks medicine, so there's nothing left to exclude,
+// and medicine_names.category no longer exists.
 $medicines = [];
-$result = $conn->query("SELECT medicine_id, name, category, unit, current_stock, minimum_stock FROM inventory_medicines ORDER BY name ASC");
+$result = $conn->query(
+    "SELECT im.medicine_id, im.name, im.unit, im.current_stock, im.minimum_stock
+     FROM inventory_medicines im
+     ORDER BY im.name ASC"
+);
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $medicines[] = $row;
     }
 }
 
-// TODO(backend): SELECT AVG(daily units) FROM a real consumption log,
-// per medicine, over a rolling window (e.g. last 30 days).
-// Mocked here as a plausible daily-usage figure, keyed by medicine name
-// so it survives whatever medicine_id happens to be in this environment.
-$mockDailyUsage = [
-    "Amoxicillin 500mg"   => 8,
-    "Paracetamol 500mg"   => 15,
-    "Losartan 50mg"       => 3,
-    "Metformin 500mg"     => 4,
-    "Ibuprofen 200mg"     => 9,
-    "Cetirizine 10mg"     => 2,
-    "Ascorbic Acid 500mg" => 12,
-    "Salbutamol Inhaler"  => 1,
-];
-$defaultDailyUsage = 3; // fallback for any real medicine not in the mock map above
+// Rolling 30-day average daily usage per medicine, from real exit-scan
+// history. days_span is capped at 30 and floored at 1 so a medicine
+// scanned out only once, today, doesn't divide by zero or get diluted
+// against a mostly-empty 30-day window it hasn't existed for.
+$avgDailyUsageByMedicine = [];
+$usageResult = $conn->query(
+    "SELECT medicine_id,
+            SUM(units_deducted) AS total_units,
+            LEAST(DATEDIFF(CURDATE(), MIN(scanned_at)) + 1, 30) AS days_span
+     FROM medicine_exit_log
+     WHERE scanned_at >= (CURDATE() - INTERVAL 29 DAY)
+     GROUP BY medicine_id"
+);
+if ($usageResult) {
+    while ($row = $usageResult->fetch_assoc()) {
+        $days = max((int) $row['days_span'], 1);
+        $avgDailyUsageByMedicine[(int) $row['medicine_id']] = $row['total_units'] / $days;
+    }
+}
 
-// TODO(backend): derive from historical supplier_bids.estimated_delivery
-// per medicine/supplier instead of a flat default.
-$defaultLeadTimeDays = 5;
+// Admin-configurable via System Settings > Pharmacy & Inventory (see
+// includes/system_settings.php). This used to be a per-medicine
+// historical-lead-time lookup; see FIXED note above for why that broke
+// and was replaced with one shared default. Read the same way
+// includes/reorder_point.php reads it, so this report page and the
+// dispense-time notification trigger can never silently disagree —
+// they intentionally duplicate the reorder-point formula (see that
+// file's header), but must never duplicate a stale copy of the setting.
+$defaultLeadTimeDays = get_setting_int($conn, 'reorder_default_lead_time_days', 5);
 
 // Safety stock buffer: extra cushion on top of what lead time alone
-// would require, in case a delivery is late or usage spikes.
-const SAFETY_STOCK_PERCENT = 20;
+// would require, in case a delivery is late or usage spikes. Also
+// admin-configurable, same reasoning as above.
+$safetyStockPercent = get_setting_int($conn, 'reorder_safety_stock_percent', 20);
 
-function computeReorderPoint($avgDailyUsage, $leadTimeDays)
+function computeReorderPoint($avgDailyUsage, $leadTimeDays, $safetyPercent)
 {
     $base = $avgDailyUsage * $leadTimeDays;
-    $safety = $base * (SAFETY_STOCK_PERCENT / 100);
+    $safety = $base * ($safetyPercent / 100);
     return (int) ceil($base + $safety);
 }
 
 $rows = [];
 foreach ($medicines as $m) {
-    $avgDailyUsage = $mockDailyUsage[$m['name']] ?? $defaultDailyUsage;
+    $medicineId = (int) $m['medicine_id'];
+    $avgDailyUsage = $avgDailyUsageByMedicine[$medicineId] ?? 0;
     $leadTimeDays = $defaultLeadTimeDays;
-    $reorderPoint = computeReorderPoint($avgDailyUsage, $leadTimeDays);
+    $noUsageData = !isset($avgDailyUsageByMedicine[$medicineId]);
+
+    if ($noUsageData) {
+        // No velocity to compute from — fall back to the old flat rule
+        // instead of guessing a number.
+        $reorderPoint = (int) $m['minimum_stock'];
+    } else {
+        $reorderPoint = computeReorderPoint($avgDailyUsage, $leadTimeDays, $safetyStockPercent);
+    }
     $daysOfStockLeft = $avgDailyUsage > 0 ? (int) floor($m['current_stock'] / $avgDailyUsage) : null;
 
     if ($m['current_stock'] <= $reorderPoint) {
         $recommendation = 'reorder_now';
-    } elseif ($m['current_stock'] <= $reorderPoint * 1.5) {
+    } elseif (!$noUsageData && $m['current_stock'] <= $reorderPoint * 1.5) {
         $recommendation = 'monitor';
     } else {
         $recommendation = 'ok';
@@ -99,7 +133,7 @@ foreach ($medicines as $m) {
     // The specific case the panel asked about: still above the flat
     // minimum_stock threshold, but the velocity-aware reorder point says
     // otherwise. This is what the old rule alone would miss.
-    $missedByOldRule = ($m['current_stock'] > $m['minimum_stock']) && $recommendation === 'reorder_now';
+    $missedByOldRule = !$noUsageData && ($m['current_stock'] > $m['minimum_stock']) && $recommendation === 'reorder_now';
 
     $rows[] = $m + [
         "avg_daily_usage"   => $avgDailyUsage,
@@ -108,6 +142,7 @@ foreach ($medicines as $m) {
         "days_of_stock_left" => $daysOfStockLeft,
         "recommendation"    => $recommendation,
         "missed_by_old_rule" => $missedByOldRule,
+        "no_usage_data"     => $noUsageData,
     ];
 }
 
@@ -115,16 +150,14 @@ foreach ($medicines as $m) {
 usort($rows, fn($a, $b) => ($a['days_of_stock_left'] ?? PHP_INT_MAX) <=> ($b['days_of_stock_left'] ?? PHP_INT_MAX));
 
 $counts = ['reorder_now' => 0, 'monitor' => 0, 'ok' => 0];
-$missedCount = 0;
 foreach ($rows as $r) {
     $counts[$r['recommendation']]++;
-    if ($r['missed_by_old_rule']) $missedCount++;
 }
 
 $recommendationLabels = [
     'reorder_now' => 'Reorder Now',
     'monitor'     => 'Monitor',
-    'ok'          => 'OK',
+    'ok'          => 'Sufficient Stock',
 ];
 $recommendationPillClass = [
     'reorder_now' => 'status-reorder-now',
@@ -159,34 +192,18 @@ $current_page = 'reorder-insights';
                     <p class="page-subtitle">When a medicine actually needs reordering, based on how fast it's moving &mdash; not just whether it's already below minimum stock.</p>
                 </div>
             </header>
-
-            <section class="card expiry-rules-card">
-                <div class="card-header">
-                    <h2>Why Minimum Stock Alone Isn't Enough</h2>
-                    <span class="card-subtitle">Answers: "when to order if the medicine is fast-moving but won't be out of stock yet?"</span>
-                </div>
-                <div class="expiry-rules-list">
-                    <div class="expiry-rule-row">
-                        <span class="status-pill status-reorder-ok">Old rule</span>
-                        <span>Flag it once <strong>current stock &le; minimum stock</strong>. Doesn't account for how fast it's being used.</span>
-                    </div>
-                    <div class="expiry-rule-row">
-                        <span class="status-pill status-reorder-now">New rule</span>
-                        <span>Reorder Point = (average daily usage &times; supplier lead time) + <?php echo SAFETY_STOCK_PERCENT; ?>% safety buffer. Flag it once <strong>current stock &le; reorder point</strong> &mdash; which can trigger well before minimum stock does, for a fast-moving item.</span>
-                    </div>
-                    <?php if ($missedCount > 0): ?>
-                        <div class="expiry-rule-row">
-                            <span class="status-pill status-reorder-monitor"><?php echo $missedCount; ?></span>
-                            <span><?php echo $missedCount === 1 ? 'medicine below' : 'medicines below'; ?> would be missed by the old rule right now &mdash; still above minimum stock, but already past its velocity-aware reorder point.</span>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </section>
+            <?php if ($counts['reorder_now'] > 0): ?>
+                <p class="card-subtitle" style="margin:-4px 0 18px;"><?php echo $counts['reorder_now']; ?> medicine<?php echo $counts['reorder_now'] === 1 ? '' : 's'; ?> flagged Reorder Now. Download the list above, then upload it on <a href="purchase-requests.php">Purchase Requests</a> &rsaquo; Import from file &mdash; quantities and details come pre-filled.</p>
+            <?php endif; ?>
 
             <div class="stats-grid">
                 <div class="stat-card stat-red">
                     <div class="stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"></path>
+                            <path d="M12 9v4"></path>
+                            <path d="M12 17h.01"></path>
+                        </svg>
                     </div>
                     <div class="stat-info">
                         <span class="stat-value"><?php echo $counts['reorder_now']; ?></span>
@@ -195,7 +212,10 @@ $current_page = 'reorder-insights';
                 </div>
                 <div class="stat-card stat-amber">
                     <div class="stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 6v6l4 2"></path>
+                        </svg>
                     </div>
                     <div class="stat-info">
                         <span class="stat-value"><?php echo $counts['monitor']; ?></span>
@@ -204,11 +224,14 @@ $current_page = 'reorder-insights';
                 </div>
                 <div class="stat-card stat-teal">
                     <div class="stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
                     </div>
                     <div class="stat-info">
                         <span class="stat-value"><?php echo $counts['ok']; ?></span>
-                        <span class="stat-label">OK</span>
+                        <span class="stat-label">Sufficient Stock</span>
                     </div>
                 </div>
             </div>
@@ -216,31 +239,16 @@ $current_page = 'reorder-insights';
             <section class="card">
                 <div class="card-header">
                     <h2>Reorder Point by Medicine</h2>
-                    <span class="card-subtitle">Sorted by soonest to run out. Lead time and safety stock % are adjustable below to see how the recommendation shifts.</span>
-                </div>
-
-                <div class="recon-form-grid" style="margin-bottom:16px;">
-                    <div class="dr-field">
-                        <label for="leadTimeInput">Supplier Lead Time (days)</label>
-                        <input type="number" id="leadTimeInput" min="1" step="1" value="<?php echo $defaultLeadTimeDays; ?>">
-                    </div>
-                    <div class="dr-field">
-                        <label for="safetyStockInput">Safety Stock Buffer (%)</label>
-                        <input type="number" id="safetyStockInput" min="0" step="5" value="<?php echo SAFETY_STOCK_PERCENT; ?>">
-                    </div>
-                    <div class="dr-field">
-                        <label>&nbsp;</label>
-                        <button type="button" class="btn btn-secondary" id="recalcBtn">Recalculate</button>
-                    </div>
+                    <span class="card-subtitle">Sorted by soonest to run out. Assumes a <?php echo $defaultLeadTimeDays; ?>-day supplier lead time with a <?php echo $safetyStockPercent; ?>% safety stock buffer.</span>
                 </div>
 
                 <div class="toolbar-filters">
                     <input type="text" id="reorderSearch" placeholder="Search medicine&hellip;" class="search-input">
-                    <select id="reorderFilter">
+                    <select id="reorderFilter" class="filter-select">
                         <option value="all">All Recommendations</option>
                         <option value="reorder_now">Reorder Now</option>
                         <option value="monitor">Monitor</option>
-                        <option value="ok">OK</option>
+                        <option value="ok">Sufficient Stock</option>
                     </select>
                 </div>
 
@@ -250,10 +258,9 @@ $current_page = 'reorder-insights';
                             <tr>
                                 <th>Medicine</th>
                                 <th>Current Stock</th>
-                                <th>Min. Stock (old rule)</th>
                                 <th>Avg. Daily Usage</th>
                                 <th>Days of Stock Left</th>
-                                <th>Reorder Point (new rule)</th>
+                                <th>Reorder Point</th>
                                 <th>Recommendation</th>
                             </tr>
                         </thead>
@@ -261,20 +268,18 @@ $current_page = 'reorder-insights';
                             <?php foreach ($rows as $r): ?>
                                 <tr
                                     data-name="<?php echo htmlspecialchars(strtolower($r['name'])); ?>"
-                                    data-current-stock="<?php echo (int) $r['current_stock']; ?>"
-                                    data-min-stock="<?php echo (int) $r['minimum_stock']; ?>"
-                                    data-avg-usage="<?php echo (float) $r['avg_daily_usage']; ?>"
-                                    data-unit="<?php echo htmlspecialchars($r['unit']); ?>"
                                     data-recommendation="<?php echo $r['recommendation']; ?>">
                                     <td>
                                         <strong><?php echo htmlspecialchars($r['name']); ?></strong>
                                         <?php if ($r['missed_by_old_rule']): ?>
                                             <div class="restock-revision-note">Missed by the old minimum-stock rule</div>
                                         <?php endif; ?>
+                                        <?php if ($r['no_usage_data']): ?>
+                                            <div class="restock-revision-note">No usage data yet &mdash; falling back to minimum stock</div>
+                                        <?php endif; ?>
                                     </td>
                                     <td class="cell-current-stock"><?php echo (int) $r['current_stock']; ?> <?php echo htmlspecialchars($r['unit']); ?></td>
-                                    <td><?php echo (int) $r['minimum_stock']; ?> <?php echo htmlspecialchars($r['unit']); ?></td>
-                                    <td class="cell-avg-usage"><?php echo (float) $r['avg_daily_usage']; ?> / day</td>
+                                    <td class="cell-avg-usage"><?php echo round((float) $r['avg_daily_usage'], 1); ?> / day</td>
                                     <td class="cell-days-left"><?php echo $r['days_of_stock_left'] !== null ? $r['days_of_stock_left'] . ' days' : '&mdash;'; ?></td>
                                     <td class="cell-reorder-point"><?php echo (int) $r['reorder_point']; ?> <?php echo htmlspecialchars($r['unit']); ?></td>
                                     <td class="cell-recommendation"><span class="status-pill <?php echo $recommendationPillClass[$r['recommendation']]; ?>"><?php echo $recommendationLabels[$r['recommendation']]; ?></span></td>
@@ -290,50 +295,6 @@ $current_page = 'reorder-insights';
     </div>
 
     <script>
-        const SAFETY_STOCK_DEFAULT = <?php echo SAFETY_STOCK_PERCENT; ?>;
-        const LEAD_TIME_DEFAULT = <?php echo $defaultLeadTimeDays; ?>;
-        const RECOMMENDATION_LABELS = { reorder_now: 'Reorder Now', monitor: 'Monitor', ok: 'OK' };
-        const RECOMMENDATION_PILL_CLASS = { reorder_now: 'status-reorder-now', monitor: 'status-reorder-monitor', ok: 'status-reorder-ok' };
-
-        function computeReorderPoint(avgDailyUsage, leadTimeDays, safetyPercent) {
-            const base = avgDailyUsage * leadTimeDays;
-            const safety = base * (safetyPercent / 100);
-            return Math.ceil(base + safety);
-        }
-
-        function recommendationFor(currentStock, reorderPoint) {
-            if (currentStock <= reorderPoint) return 'reorder_now';
-            if (currentStock <= reorderPoint * 1.5) return 'monitor';
-            return 'ok';
-        }
-
-        // Recomputes every row's Reorder Point / Days Left / Recommendation
-        // client-side, purely so the effect of lead time and safety stock
-        // is visible immediately. Nothing here is persisted.
-        function recalcAll() {
-            const leadTime = parseFloat(document.getElementById('leadTimeInput').value) || LEAD_TIME_DEFAULT;
-            const safetyPercent = parseFloat(document.getElementById('safetyStockInput').value) || 0;
-
-            document.querySelectorAll('#reorderTableBody tr').forEach(row => {
-                const currentStock = parseFloat(row.dataset.currentStock);
-                const avgUsage = parseFloat(row.dataset.avgUsage);
-                const reorderPoint = computeReorderPoint(avgUsage, leadTime, safetyPercent);
-                const daysLeft = avgUsage > 0 ? Math.floor(currentStock / avgUsage) : null;
-                const recommendation = recommendationFor(currentStock, reorderPoint);
-
-                row.dataset.recommendation = recommendation;
-                row.querySelector('.cell-reorder-point').textContent = reorderPoint + ' ' + row.dataset.unit;
-                row.querySelector('.cell-days-left').textContent = daysLeft !== null ? daysLeft + ' days' : '\u2014';
-
-                const pillCell = row.querySelector('.cell-recommendation');
-                pillCell.innerHTML = `<span class="status-pill ${RECOMMENDATION_PILL_CLASS[recommendation]}">${RECOMMENDATION_LABELS[recommendation]}</span>`;
-            });
-
-            applyFilters();
-        }
-
-        document.getElementById('recalcBtn').addEventListener('click', recalcAll);
-
         // ---------- Search + recommendation filter ----------
         const searchInput = document.getElementById('reorderSearch');
         const reorderFilter = document.getElementById('reorderFilter');

@@ -103,21 +103,48 @@ $patient = [
     "reasonForVisit" => $appointment['symptom_description'],
 ];
 
-// Real medicine list + current stock, from the same inventory_medicines
-// table Pharmacy manages. Previously this was a hardcoded sample list
-// with medicine names that didn't even match what Pharmacy actually
-// stocks — this is the first half of connecting Prescribing to
-// Inventory (see the note near medicineOptions below for the other half
-// still missing: prescribing doesn't deduct stock yet).
+// Medicine names from the same inventory_medicines table Pharmacy
+// manages, so the dropdown offers standardized names instead of
+// free-typed variants of the same drug. Previously this was a
+// hardcoded sample list with names that didn't even match what
+// Pharmacy actually stocks.
+//
+// LINKED TO INVENTORY (2026-09-05): a prescription now always carries the
+// real medicine_id the doctor picked here, not just a name string — that's
+// what lets staff/dispense-stock.php pull up an exact, verifiable match
+// against inventory_medicines when a patient later presents this
+// prescription to be filled. consultation-process.php re-resolves the
+// name server-side from this id (never trusts a client-submitted name).
+//
+// Exact current_stock figures are still not shown (a bulk-stock number
+// isn't a meaningful per-prescription comparison), but whether it's
+// in stock AT ALL is now surfaced as an "available" flag, so a doctor
+// isn't prescribing blind — an out-of-stock item is labeled "Not
+// available in pharmacy" in the dropdown but can still be selected
+// (the patient may need to source it elsewhere, or wait for restock).
 $medicines = [];
-$medResult = $conn->query("SELECT name, current_stock, unit FROM inventory_medicines ORDER BY name ASC");
+$medResult = $conn->query("SELECT medicine_id, name, current_stock FROM inventory_medicines ORDER BY name ASC");
 if ($medResult) {
     while ($row = $medResult->fetch_assoc()) {
         $medicines[] = [
-            "name"  => $row['name'],
-            "stock" => (int) $row['current_stock'],
-            "unit"  => $row['unit'],
+            "id" => (int) $row['medicine_id'],
+            "name" => $row['name'],
+            "available" => ((int) $row['current_stock']) > 0,
         ];
+    }
+}
+
+// Lab test names for the dropdown, read from the lab_tests catalog
+// (see 028_lab_test_catalog.sql) - only active tests are offered. Still a
+// plain list of names, so consultation.js's row builder is unchanged.
+// Ordering a lab test is optional and independent of whichever outcome the
+// doctor picks below, since a doctor may want labs run regardless of
+// whether the visit ends in a prescription, follow-up, admission, etc.
+$labTestOptions = [];
+$labTestResult = $conn->query("SELECT test_name FROM lab_tests WHERE is_active = 1 ORDER BY category ASC, test_name ASC");
+if ($labTestResult) {
+    while ($labTestRow = $labTestResult->fetch_assoc()) {
+        $labTestOptions[] = $labTestRow['test_name'];
     }
 }
 ?>
@@ -136,7 +163,11 @@ if ($medResult) {
     <div class="app-shell">
 
         <?php
-        $current_page = 'consultation';
+        // Consultation no longer has its own sidebar entry - it's only ever
+        // reached by picking a patient from Today's Queue - so keep that
+        // nav item highlighted as the parent context instead of a key that
+        // no longer exists in $navigation.
+        $current_page = 'todays-queue';
         include 'includes/sidebar.php';
         ?>
 
@@ -245,6 +276,32 @@ if ($medResult) {
                             placeholder="Add any additional clinical observations..."
                             rows="4"></textarea>
                         <span class="form-hint">Optional: Add differential diagnosis, patient education, or follow-up recommendations.</span>
+                    </div>
+                </section>
+
+                <!-- Laboratory Tests (optional, independent of outcome below -
+                     a doctor may order labs regardless of whether the visit
+                     ends in a prescription, follow-up, admission, etc.) -->
+                <section class="card prescription-card">
+                    <div class="card-header">
+                        <h2>Laboratory Tests</h2>
+                        <p style="margin: 0; font-size: 13.5px; color: var(--text-muted); font-weight: 400;">
+                            Optional. Order any tests this patient needs to take at the laboratory.
+                        </p>
+                    </div>
+
+                    <div id="labTestsList" class="medicines-list">
+                        <!-- Lab test rows will be added here -->
+                    </div>
+
+                    <div class="add-medicine-btn-wrapper">
+                        <button type="button" id="addLabTestBtn" class="btn btn-secondary">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            Add Lab Test
+                        </button>
                     </div>
                 </section>
 
@@ -388,17 +445,19 @@ if ($medResult) {
         </main>
     </div>
 
-    <!-- Real medicine names + current stock from inventory_medicines, so
-         the dropdown and the stock hint next to each row reflect what
-         Pharmacy actually has. UI ONLY, still: selecting a medicine here
-         and clicking "Issue Prescription" does NOT deduct current_stock
-         on submit — consultation-process.php only writes to the
-         `prescriptions` table. TODO(backend): either deduct stock at
-         issue time here, or (more realistic clinically) at actual
-         dispensing time in Pharmacy once that's a real workflow, with
-         this quantity as the reference/expected amount. -->
+    <!-- Medicine catalog from inventory_medicines: {id, name, available}
+         per item. `id` is what actually gets submitted (medicine_id[]) so
+         every prescription line links to a real catalog row — staff can
+         later look this up and verify it against the printed handout
+         before dispensing. `available` only flags whether current_stock
+         is above zero (shown as a label, not a number) so a doctor isn't
+         prescribing blind, without surfacing a bulk-stock figure that
+         isn't a meaningful per-prescription comparison. -->
     <script>
         var medicineOptions = <?php echo json_encode($medicines); ?>;
+        // Static reference list (see $labTestOptions in consultation.php) -
+        // not DB-backed, since there's no lab test catalog table yet.
+        var labTestOptions = <?php echo json_encode($labTestOptions); ?>;
     </script>
 
     <script src="../assets/js/doctor-dashboard.js"></script>

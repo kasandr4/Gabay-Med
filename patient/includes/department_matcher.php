@@ -17,6 +17,13 @@
 //   3 = strong identity signal (who the patient is / clearly department-specific)
 //   2 = moderately specific symptom/condition
 //   1 = generic symptom that could apply broadly
+//
+// MATCHING (fixed 2026-08-02): word-boundary regex, not raw substring
+// search. Substring search let short keywords match INSIDE unrelated
+// words — 'kid' inside "kidney", 'cut' inside "acute", 'ari' inside
+// Tagalog words like "kasarian", 'tb' inside "outbreak" — all of which
+// are everyday phrasings, not edge cases. See recommend_department()
+// below for the actual match.
 
 function get_department_keywords()
 {
@@ -24,46 +31,11 @@ function get_department_keywords()
     // Format: 'keyword' => weight
     // Includes English + common Tagalog/Taglish phrasings, since real patients
     // often describe symptoms in Filipino rather than pure English.
+    // NOTE (2026-09-16): Surgery removed entirely - the department was
+    // soft-deleted (departments.is_active = 0, see
+    // 023_deactivate_surgery_and_drop_waitlist.sql) since patient booking
+    // is check-ups only now. No symptom should route there anymore.
     return [
-        'Surgery' => [
-            'surgery' => 3,
-            'operation' => 3,
-            'opera' => 3,
-            'appendicitis' => 3,
-            'appendix' => 3,
-            'hernia' => 3,
-            'gallbladder' => 3,
-            'gallstone' => 3,
-            'stab' => 3,
-            'tinusok' => 3,
-            'sinaksak' => 3,
-            'fracture' => 2,
-            'broken bone' => 2,
-            'bali' => 2,
-            'nabali' => 2,
-            'laceration' => 2,
-            'bleeding wound' => 2,
-            'abscess' => 2,
-            'tumor' => 2,
-            'post-surgery' => 2,
-            'stitches' => 2,
-            'tahi' => 2,
-            'pigsa' => 2,
-            'wound' => 1,
-            'cut' => 1,
-            'sugat' => 1,
-            'hiwa' => 1,
-            'injury' => 1,
-            'nasugatan' => 1,
-            'lump' => 1,
-            'bukol' => 1,
-            'mass' => 1,
-            'accident' => 1,
-            'aksidente' => 1,
-            'trauma' => 1,
-            'swelling' => 1,
-            'namamaga' => 1,
-        ],
         'OB-GYN' => [
             'pregnant' => 3,
             'pregnancy' => 3,
@@ -225,7 +197,14 @@ function recommend_department($symptom_text)
         $matches = [];
 
         foreach ($weighted_keywords as $keyword => $weight) {
-            if (strpos($text, $keyword) !== false) {
+            // Word-boundary match, not raw substring search. Plain strpos()
+            // let short keywords silently match INSIDE unrelated words —
+            // 'kid' inside ki[kid]ney (falsely boosting Pediatrics over
+            // Internal Medicine's own 'kidney' entry), 'cut' inside a[cut]e,
+            // 'ari' inside Tagalog words like kas[ari]an, 'tb' inside
+            // ou[tb]reak. All four are real, common everyday phrasings
+            // ("kidney pain", "acute pain"), not edge cases.
+            if (preg_match('/\b' . preg_quote($keyword, '/') . '\b/', $text)) {
                 $matches[] = $keyword;
                 $total_score += $weight;
             }
@@ -259,12 +238,18 @@ function recommend_department($symptom_text)
         }
     }
 
-    // No keywords matched at all -> fall back to Internal Medicine,
-    // the safest general-purpose default for an unclear description.
+    // No keywords matched at all -> do NOT silently default to any
+    // specific department (previously this defaulted to Internal
+    // Medicine, which made it look like the system was recommending —
+    // or worse, diagnosing — a department/treatment path with zero
+    // actual evidence from the description). Callers must handle
+    // department === null by asking the patient to add detail (patient
+    // booking flow already does this) or by requiring staff to pick a
+    // department manually (walk-in flow).
     if ($best_score === 0) {
         return [
-            'department' => 'Internal Medicine',
-            'rationale' => null,
+            'department' => null,
+            'rationale' => 'No specific department could be matched from this description.',
             'matched_count' => 0,
         ];
     }

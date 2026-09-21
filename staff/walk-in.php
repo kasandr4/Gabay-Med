@@ -16,8 +16,11 @@
 
 require_once '../includes/auth_guard.php';
 require_role('staff');
+require_staff_type('front_desk');
 require_once '../config/db.php';
 require_once '../patient/includes/department_matcher.php';
+require_once '../includes/schedule_resolver.php';
+require_once '../includes/slot_grid.php';
 require_once '../includes/notifications.php';
 require_once '../includes/csrf.php';
 require_once '../includes/reference_number.php';
@@ -206,7 +209,15 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
         $walkin['recommended_department'] = $recommendation['department'];
         $walkin['recommendation_rationale'] = $recommendation['rationale'];
         $walkin['department_override'] = false;
-        $walkin['confirmed_department'] = $recommendation['department'];
+        // Only pre-confirm when something actually matched. If nothing
+        // matched, $recommendation['department'] is null — leave
+        // confirmed_department unset so step 2 forces staff to pick one
+        // explicitly instead of silently carrying forward no department.
+        if ($recommendation['department'] !== null) {
+            $walkin['confirmed_department'] = $recommendation['department'];
+        } else {
+            unset($walkin['confirmed_department']);
+        }
         $step = 2;
     }
 }
@@ -223,7 +234,7 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
     if (isset($_POST['override_department']) && $_POST['override_department'] !== '') {
         $override_dept = trim($_POST['override_department']);
 
-        $stmt = $conn->prepare("SELECT department_name FROM departments WHERE department_name = ?");
+        $stmt = $conn->prepare("SELECT department_name FROM departments WHERE department_name = ? AND is_active = 1");
         $stmt->bind_param("s", $override_dept);
         $stmt->execute();
         $valid_dept = $stmt->get_result()->fetch_assoc();
@@ -237,10 +248,45 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
             $walkin['department_override'] = true;
             $step = 3;
         }
+    } elseif ($walkin['recommended_department'] === null) {
+        // Nothing was recommended and staff didn't pick an override —
+        // don't fall through to a guessed department, force a choice.
+        $errors[] = "No department was recommended from that description — please select one below.";
+        $step = 2;
     } else {
         $walkin['confirmed_department'] = $walkin['recommended_department'];
         $walkin['department_override'] = false;
         $step = 3;
+    }
+
+    // REVERTED 2026-09-15: this was scoped to the confirmed department
+    // (2026-08-08 fix) back when the policy was "one active appointment
+    // per DEPARTMENT". That policy is now back to "one active appointment
+    // total, system-wide" (see patient/book-appointment.php's
+    // $active_appointments header comment) - same check, department_id
+    // filter dropped, applies regardless of which department this
+    // walk-in is headed for.
+    if ($step === 3) {
+        $stmt = $conn->prepare("
+            SELECT a.slot_start, a.department_id, dep.department_name, u.first_name AS doc_first, u.last_name AS doc_last
+            FROM appointments a
+            JOIN departments dep ON dep.department_id = a.department_id
+            JOIN users u ON u.user_id = a.doctor_id
+            WHERE a.patient_id = ?
+              AND a.status IN ('pending', 'confirmed')
+        ");
+        $stmt->bind_param("i", $walkin['patient_id']);
+        $stmt->execute();
+        $already_active = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($already_active) {
+            $errors[] = $walkin['patient_name'] . " already has an active " . $already_active['department_name'] .
+                " appointment on " . date('M j, Y \a\t g:i A', strtotime($already_active['slot_start'])) .
+                " with Dr. " . $already_active['doc_first'] . ' ' . $already_active['doc_last'] .
+                " - check them in for that instead, or cancel it first if this is unrelated.";
+            $step = 2;
+        }
     }
 }
 
@@ -277,13 +323,16 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
         $doctor_full_name = trim($doctor['first_name'] . ' ' . $doctor['last_name']);
         $today_date = date('Y-m-d');
 
-        $stmt = $conn->prepare("SELECT duty_id FROM duty_schedule WHERE doctor_id = ? AND duty_date = ?");
-        $stmt->bind_param("is", $doctor['user_id'], $today_date);
-        $stmt->execute();
-        $on_duty_today = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
+        // Same source of truth as patient/book-appointment.php and the
+        // Doctor Portal: recurring weekly schedule + any override for
+        // today, via includes/schedule_resolver.php. Replaces the old
+        // duty_schedule existence check + hardcoded 8am-5pm hours below,
+        // so a walk-in can only be booked within the doctor's actual
+        // scheduled hours for today (and respects Weekly Overrides, e.g.
+        // an emergency leave or half day set in the admin portal).
+        $today_schedule = resolve_effective_schedule($conn, $doctor['user_id'], $today_date);
 
-        if (!$on_duty_today) {
+        if (!$today_schedule['on_duty']) {
             $errors[] = "Dr. " . $doctor_full_name . " is not on duty today. Please select another doctor.";
             $step = 3;
         } else {
@@ -302,27 +351,55 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
             }
             $stmt->close();
 
-            // Same clinic hours / lunch-break exclusion as the rest of the
-            // system (8am-5pm, skipping the 11am-1pm block).
-            $clinic_hours_today = array_values(array_diff(range(8, 16), [11, 12]));
-            $next_slot = null;
-            foreach ($clinic_hours_today as $hour) {
-                $candidate = $today_date . ' ' . str_pad($hour, 2, '0', STR_PAD_LEFT) . ':00:00';
-                if (strtotime($candidate) < time()) continue;
-                if (in_array($candidate, $booked_today, true)) continue;
-                $next_slot = $candidate;
-                break;
-            }
-
-            if ($next_slot === null) {
-                $errors[] = "No available slots remaining today for Dr. " . $doctor_full_name . " — please select another doctor.";
+            if ($today_schedule['max_patients'] && count($booked_today) >= (int) $today_schedule['max_patients']) {
+                $errors[] = "Dr. " . $doctor_full_name . " is fully booked for today — please select another doctor.";
                 $step = 3;
             } else {
-                $walkin['doctor_id'] = $doctor['user_id'];
-                $walkin['doctor_name'] = $doctor_full_name;
-                $walkin['slot_start'] = $next_slot;
-                $walkin['slot_end'] = date('Y-m-d H:i:s', strtotime($next_slot) + 3600);
-                $step = 4;
+                // Walk within the doctor's actual scheduled hours today
+                // (still skipping the 11am-1pm lunch block, same as the
+                // rest of the system), rather than a fixed 8am-5pm window.
+                // PER-DEPARTMENT DURATION (settled 2026-08-06): this used
+                // to build its own hardcoded 30-minute time list, a THIRD
+                // copy of logic that now also lives in
+                // includes/slot_grid.php's get_clinic_time_slots() and
+                // patient/book-appointment.php's confirm_booking. Reusing
+                // the shared helper means a walk-in's slot spacing always
+                // matches that department's configured duration
+                // automatically, with nothing to keep in sync by hand.
+                // Doctors belong to exactly one department (users.department_id),
+                // so this reuses that instead of a second name-based lookup.
+                //
+                // FIXED 2026-09-08: now passes today's actual resolved
+                // start/end straight into get_clinic_time_slots() instead
+                // of generating the function's hardcoded default range
+                // and filtering it down afterward - the old filter could
+                // only ever narrow that default range, never recover
+                // hours outside it, so a doctor scheduled past the
+                // default (or, before that default was corrected, past
+                // the previous hardcoded 4PM) never had a walk-in slot
+                // offered in their actual last working hour(s).
+                $department_id_for_duration = get_doctor_department_id($conn, $doctor['user_id']);
+                $duration_minutes = get_department_duration_minutes($conn, $department_id_for_duration);
+                $clinic_times_today = get_clinic_time_slots($duration_minutes, $today_schedule['start'], $today_schedule['end']);
+                $next_slot = null;
+                foreach ($clinic_times_today as $timeStr) {
+                    $candidate = $today_date . ' ' . $timeStr;
+                    if (strtotime($candidate) < time()) continue;
+                    if (in_array($candidate, $booked_today, true)) continue;
+                    $next_slot = $candidate;
+                    break;
+                }
+
+                if ($next_slot === null) {
+                    $errors[] = "No available slots remaining today for Dr. " . $doctor_full_name . " — please select another doctor.";
+                    $step = 3;
+                } else {
+                    $walkin['doctor_id'] = $doctor['user_id'];
+                    $walkin['doctor_name'] = $doctor_full_name;
+                    $walkin['slot_start'] = $next_slot;
+                    $walkin['slot_end'] = date('Y-m-d H:i:s', strtotime($next_slot) + ($duration_minutes * 60));
+                    $step = 4;
+                }
             }
         }
     }
@@ -350,7 +427,7 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
         $errors[] = "This slot was just taken — please select the doctor again to get the next available time.";
         $step = 3;
     } else {
-        $stmt = $conn->prepare("SELECT department_id FROM departments WHERE department_name = ?");
+        $stmt = $conn->prepare("SELECT department_id FROM departments WHERE department_name = ? AND is_active = 1");
         $stmt->bind_param("s", $walkin['confirmed_department']);
         $stmt->execute();
         $dept_row = $stmt->get_result()->fetch_assoc();
@@ -359,7 +436,7 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
 
         $recommended_department_id = null;
         if (isset($walkin['recommended_department'])) {
-            $stmt = $conn->prepare("SELECT department_id FROM departments WHERE department_name = ?");
+            $stmt = $conn->prepare("SELECT department_id FROM departments WHERE department_name = ? AND is_active = 1");
             $stmt->bind_param("s", $walkin['recommended_department']);
             $stmt->execute();
             $rec_row = $stmt->get_result()->fetch_assoc();
@@ -367,8 +444,16 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
             $recommended_department_id = $rec_row['department_id'] ?? null;
         }
 
-        // Same race-condition guard as book-appointment.php (UNIQUE KEY on
-        // doctor_id + slot_start, caught via errno 1062), plus:
+        // FIXED (2026-09-14): same bug as book-appointment.php had -
+        // "@$insert_stmt->execute()" never actually caught the UNIQUE KEY
+        // race-condition guard (unique_active_slot on doctor_id +
+        // slot_start). PHP 8.1+'s mysqli throws mysqli_sql_exception on a
+        // duplicate-key violation instead of having execute() return
+        // false, and @ only suppresses warnings/notices, not thrown
+        // exceptions - so a genuine race (this walk-in landing on a slot a
+        // patient or another walk-in just took) threw an uncaught fatal
+        // instead of the intended "just taken" message. try/catch is the
+        // real guard now, same fix as book-appointment.php. Also still:
         //   - booking_source = 'walk_in' so this is distinguishable everywhere
         //     downstream (doctor's queue, patient records, reports)
         //   - checked_in_at = NOW() set immediately — the patient is already
@@ -394,9 +479,8 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
             $walkin['slot_end']
         );
 
-        $insert_succeeded = @$insert_stmt->execute();
-
-        if ($insert_succeeded) {
+        try {
+            $insert_stmt->execute();
             $new_appointment_id = $insert_stmt->insert_id;
             $insert_stmt->close();
 
@@ -431,10 +515,23 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
             unset($_SESSION['walkin']);
             header("Location: walk-in.php");
             exit;
-        } else {
-            $errors[] = "This slot was just taken — please select the doctor again to get the next available time.";
-            $step = 3;
+        } catch (mysqli_sql_exception $e) {
             $insert_stmt->close();
+            if ($e->getCode() === 1062 && str_contains($e->getMessage(), 'unique_active_appointment_per_patient')) {
+                // unique_active_appointment_per_patient - the app-layer
+                // $already_active check above already covers this in the
+                // normal case; this only fires on a genuine race (two
+                // front-desk windows, or the patient's own app booking
+                // landing at the same moment).
+                $errors[] = $walkin['patient_name'] . " already has an active appointment - check them in for that instead, or cancel it first if this is unrelated.";
+                $step = 2;
+            } elseif ($e->getCode() === 1062) {
+                $errors[] = "This slot was just taken — please select the doctor again to get the next available time.";
+                $step = 3;
+            } else {
+                $errors[] = "Something went wrong while booking. Please try again.";
+                $step = 3;
+            }
         }
     }
 }
@@ -443,7 +540,7 @@ if ($patient_identified && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['act
 // Data needed to render the current step
 // ============================================================
 
-$all_departments = $conn->query("SELECT department_id, department_name FROM departments ORDER BY department_name")->fetch_all(MYSQLI_ASSOC);
+$all_departments = $conn->query("SELECT department_id, department_name FROM departments WHERE is_active = 1 ORDER BY department_name")->fetch_all(MYSQLI_ASSOC);
 
 $doctors_in_department = [];
 $department_has_any_doctors = false;
@@ -463,18 +560,23 @@ if ($step === 3 && isset($walkin['confirmed_department'])) {
 
     // Only doctors actually on duty TODAY are selectable — no point
     // offering a choice that would just bounce back with an error.
+    // Same source of truth as the check above and the rest of the
+    // system: recurring weekly schedule + any override for today.
     $today_date_for_list = date('Y-m-d');
     $stmt = $conn->prepare("
         SELECT u.user_id, u.first_name, u.last_name
         FROM users u
-        JOIN duty_schedule ds ON ds.doctor_id = u.user_id AND ds.duty_date = ?
         WHERE u.role = 'doctor' AND u.is_active = 1
           AND u.department_id = (SELECT department_id FROM departments WHERE department_name = ?)
     ");
-    $stmt->bind_param("ss", $today_date_for_list, $walkin['confirmed_department']);
+    $stmt->bind_param("s", $walkin['confirmed_department']);
     $stmt->execute();
-    $doctors_in_department = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $candidate_doctors = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
+
+    $doctors_in_department = array_values(array_filter($candidate_doctors, function ($doc) use ($conn, $today_date_for_list) {
+        return resolve_effective_schedule($conn, $doc['user_id'], $today_date_for_list)['on_duty'];
+    }));
 }
 
 $flash = $_SESSION['walkin_flash'] ?? null;
@@ -659,17 +761,23 @@ $today_label = date("F j, Y");
                     <div class="card-header">
                         <h2>Step 3: Confirm Department</h2>
                     </div>
-                    <p>Recommended: <strong><?php echo htmlspecialchars($walkin['recommended_department']); ?></strong></p>
-                    <?php if ($walkin['recommendation_rationale']): ?>
-                        <p class="form-hint"><?php echo htmlspecialchars($walkin['recommendation_rationale']); ?></p>
+                    <?php if ($walkin['recommended_department'] !== null): ?>
+                        <p>Recommended: <strong><?php echo htmlspecialchars($walkin['recommended_department']); ?></strong></p>
+                        <?php if ($walkin['recommendation_rationale']): ?>
+                            <p class="form-hint"><?php echo htmlspecialchars($walkin['recommendation_rationale']); ?></p>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <p class="form-hint">No specific department could be matched from that description — please select one below.</p>
                     <?php endif; ?>
                     <form method="POST" action="walk-in.php" class="consultation-form">
                         <?= csrf_field() ?>
                         <input type="hidden" name="action" value="confirm_department">
                         <div class="form-group">
-                            <label class="form-label">Override department (optional)</label>
+                            <label class="form-label">
+                                <?php echo $walkin['recommended_department'] !== null ? 'Override department (optional)' : 'Select department'; ?>
+                            </label>
                             <select name="override_department" class="form-input">
-                                <option value="">Use recommended department</option>
+                                <option value=""><?php echo $walkin['recommended_department'] !== null ? 'Use recommended department' : '-- Select a department --'; ?></option>
                                 <?php foreach ($all_departments as $d): ?>
                                     <option value="<?php echo htmlspecialchars($d['department_name']); ?>"><?php echo htmlspecialchars($d['department_name']); ?></option>
                                 <?php endforeach; ?>

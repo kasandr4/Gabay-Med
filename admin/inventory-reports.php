@@ -1,61 +1,170 @@
 <?php
 // admin/inventory-reports.php
-// Inventory & Procurement Reports — Admin Portal (UI ONLY).
-//
-// Per the brief: no backend logic, no database queries beyond the existing
-// auth guard. Every figure and row below is static/mock, rendered
-// client-side from the REPORTS object at the bottom of this file — same
-// structure as pharmacist/reports.php.
+// Inventory Reports — Admin Portal.
 //
 // SCOPE DECISION: this is deliberately NOT a copy of the pharmacist
 // Reports page. That page covers one pharmacist's day-to-day operational
 // reports (daily sales, expiry, stock movement). This page covers what
-// only admin can see across the whole hospital: purchase request/order
-// history across all pharmacists, delivery timeliness, supplier
-// performance, and reconciliation discrepancies hospital-wide. Two
-// reports below (Inventory Stock Overview, Reconciliation Discrepancy)
-// necessarily overlap in subject with the pharmacist page, but at the
-// hospital-wide rather than per-shift granularity.
+// only admin can see across the whole hospital: stock received hospital-
+// wide (all funding sources, all pharmacists), and reconciliation
+// discrepancies hospital-wide. Two reports below (Inventory Stock
+// Overview, Reconciliation Discrepancy) necessarily overlap in subject
+// with the pharmacist page, but at the hospital-wide rather than
+// per-shift granularity.
 //
-// Reached from hospital-reports.php's "Inventory Reports" and
-// "Procurement Reports" category cards ("View Reports" buttons), not its
-// own sidebar entry — same hub-and-drilldown pattern as Quick Preview on
-// that page. $current_page stays 'reports' so the sidebar highlights the
-// same nav item as the hub.
+// Reached from hospital-reports.php's "Inventory Reports" category card
+// ("View Reports" button), not its own sidebar entry — same
+// hub-and-drilldown pattern as Quick Preview on that page. $current_page
+// stays 'reports' so the sidebar highlights the same nav item as the hub.
 //
-// SCHEMA GAP (if wired up later): needs purchase_requests, purchase_orders,
-// purchase_order_tracking, inventory_reconciliation, inventory_medicines,
-// and a suppliers table (doesn't exist yet — supplier_name is currently a
-// free-text column on purchase_orders per inventory-procurement.php).
+// FIXED (2026-08-22): Purchase Request History, Purchase Order Summary,
+// Delivery Timeliness, and Supplier Performance all queried tables
+// dropped by 018_replace_procurement_with_funding_source.sql. None of
+// them have a faithful 1:1 replacement — there's no more "request",
+// "PO", "supplier", or "expected vs. actual delivery date" concept in
+// the funding-source model. Purchase Request History and Supplier
+// Performance are removed outright (nothing to honestly replace them
+// with). Purchase Order Summary + Delivery Timeliness are merged into
+// one real replacement below, Stock Received Report — hospital-wide
+// medicine_batches history with funding source, which is the actual
+// current equivalent of "what stock came in and how."
+//
+// One correction versus the old mock this file used to carry: Purchase
+// Request History used to include a "Purchase Ordered" example status
+// that never occurred in real data — moot now that the whole report is
+// gone, noted here only so the history of that decision isn't lost.
+//
+// Still needs a real suppliers table if Stock Received Report grows
+// further — funding source is currently just the 5-value enum on
+// medicine_batches, no dedicated supplier/donor entity.
 
 require_once '../includes/auth_guard.php';
+require_once '../config/db.php'; // provides $conn (mysqli connection)
 require_role('admin');
 
-// UI ONLY — static list backing the six report cards below. No queries.
+$statusPillHtml = function (string $class, string $label): string {
+    return '<span class="status-pill ' . $class . '">' . htmlspecialchars($label) . '</span>';
+};
+
+// ---------- 1. Stock Received Report ----------
+// Replaces the old Purchase Order Summary + Delivery Timeliness reports
+// — see FIXED note above. Hospital-wide, every batch any pharmacist has
+// recorded via Record Stock Batch, regardless of funding source.
+$sourceLabels = [
+    'maip'           => 'MAIP',
+    'philhealth'     => 'PhilHealth',
+    'pho'            => 'PHO',
+    'purchase_order' => 'Purchase Order',
+    'donated'        => 'Donated',
+];
+$stockReceivedRows = [];
+$res = $conn->query(
+    "SELECT mb.received_at, im.name AS medicine, mb.source, mb.units_received,
+            CONCAT(u.first_name, ' ', u.last_name) AS recorded_by
+     FROM medicine_batches mb
+     JOIN inventory_medicines im ON im.medicine_id = mb.medicine_id
+     JOIN users u ON u.user_id = mb.created_by
+     ORDER BY mb.received_at DESC"
+);
+if ($res) {
+    while ($row = $res->fetch_assoc()) {
+        $stockReceivedRows[] = [
+            date('M j, Y', strtotime($row['received_at'])),
+            $row['medicine'],
+            $statusPillHtml('status-source-' . $row['source'], $sourceLabels[$row['source']] ?? ucfirst($row['source'])),
+            (string) (int) $row['units_received'],
+            $row['recorded_by'],
+        ];
+    }
+}
+
+// ---------- 2. Reconciliation Discrepancy Report ----------
+$reconciliationRows = [];
+$stmt = $conn->prepare(
+    "SELECT icb.confirmed_at, im.name AS medicine,
+            CONCAT(u.first_name, ' ', u.last_name) AS pharmacist_name,
+            ici.system_count, ici.final_count
+     FROM inventory_count_batches icb
+     JOIN inventory_count_items ici ON ici.batch_id = icb.batch_id
+     JOIN inventory_medicines im ON im.medicine_id = ici.medicine_id
+     JOIN users u ON u.user_id = icb.assigned_by
+     WHERE icb.status = 'confirmed' AND ici.final_count IS NOT NULL
+     ORDER BY icb.confirmed_at DESC, im.name ASC"
+);
+$stmt->execute();
+$res = $stmt->get_result();
+if ($res) {
+    while ($row = $res->fetch_assoc()) {
+        $difference = (int) $row['final_count'] - (int) $row['system_count'];
+        $diffLabel = ($difference >= 0 ? '+' : '') . $difference;
+        if ($difference !== 0) {
+            $statusHtml = $statusPillHtml('status-mismatch', $diffLabel . ' - Mismatch');
+        } else {
+            $statusHtml = $statusPillHtml('status-match', '0 - Match');
+        }
+        $reconciliationRows[] = [
+            date('M j, Y', strtotime($row['confirmed_at'])),
+            $row['medicine'],
+            $row['pharmacist_name'],
+            (string) (int) $row['system_count'],
+            (string) (int) $row['final_count'],
+            $statusHtml,
+        ];
+    }
+}
+$stmt->close();
+
+// ---------- 3. Inventory Stock Overview ----------
+$inventoryOverviewRows = [];
+$res = $conn->query("SELECT name, current_stock, minimum_stock FROM inventory_medicines ORDER BY name ASC");
+if ($res) {
+    while ($row = $res->fetch_assoc()) {
+        $current = (int) $row['current_stock'];
+        $minimum = (int) $row['minimum_stock'];
+        if ($current <= 0) {
+            $statusHtml = $statusPillHtml('status-out-of-stock', 'Out of Stock');
+        } elseif ($current <= $minimum) {
+            $statusHtml = $statusPillHtml('status-low-stock', 'Low Stock');
+        } else {
+            $statusHtml = $statusPillHtml('status-normal', 'Normal');
+        }
+        $inventoryOverviewRows[] = [
+            $row['name'],
+            (string) $current,
+            (string) $minimum,
+            $statusHtml,
+        ];
+    }
+}
+
+$reportsData = [
+    'stock-received' => [
+        'title' => 'Stock Received Report',
+        'columns' => ['Date', 'Medicine', 'Funding Source', 'Quantity', 'Recorded By'],
+        'dateColumnIndex' => 0,
+        'rows' => $stockReceivedRows,
+    ],
+    'reconciliation-discrepancy' => [
+        'title' => 'Reconciliation Discrepancy Report',
+        'columns' => ['Date', 'Medicine', 'Pharmacist', 'System Stock', 'Physical Count', 'Difference'],
+        'dateColumnIndex' => 0,
+        'rows' => $reconciliationRows,
+    ],
+    'inventory-overview' => [
+        'title' => 'Inventory Stock Overview',
+        'columns' => ['Medicine', 'Current Stock', 'Minimum Stock', 'Status'],
+        'dateColumnIndex' => null,
+        'rows' => $inventoryOverviewRows,
+    ],
+];
+
+// UI ONLY — static list backing the report cards below. No queries.
 $reportCards = [
     [
-        'key'   => 'purchase-requests',
-        'title' => 'Purchase Request History',
-        'desc'  => 'Restock requests raised by pharmacists hospital-wide, with approval status.',
-        'icon'  => 'file-text',
-    ],
-    [
-        'key'   => 'purchase-orders',
-        'title' => 'Purchase Order Summary',
-        'desc'  => 'Issued purchase orders across all suppliers, with quantities and current status.',
+        'key'   => 'stock-received',
+        'title' => 'Stock Received Report',
+        'desc'  => 'Every stock batch recorded hospital-wide, by funding source (MAIP, PhilHealth, PHO, Purchase Order, Donated).',
         'icon'  => 'box',
-    ],
-    [
-        'key'   => 'delivery-timeliness',
-        'title' => 'Delivery Timeliness Report',
-        'desc'  => 'Expected vs. actual delivery dates per purchase order, flagging delays.',
-        'icon'  => 'truck',
-    ],
-    [
-        'key'   => 'supplier-performance',
-        'title' => 'Supplier Performance Report',
-        'desc'  => 'Fulfillment volume and on-time delivery rate, by supplier.',
-        'icon'  => 'chart',
     ],
     [
         'key'   => 'reconciliation-discrepancy',
@@ -76,10 +185,7 @@ $reportCards = [
 // included further down, a same-named variable here would get silently
 // overwritten by the sidebar's icon set.
 $reportIcons = [
-    'file-text'      => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line>',
     'box'            => '<path d="M21 8v13H3V8"></path><path d="M1 3h22v5H1z"></path><path d="M10 12h4"></path>',
-    'truck'          => '<path d="M10 17h4V5H2v12h3"></path><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"></path><circle cx="7.5" cy="17.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle>',
-    'chart'          => '<path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path>',
     'check-square'   => '<polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',
     'alert-triangle' => '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>',
 ];
@@ -95,7 +201,6 @@ $current_page = 'reports';
     <title>Inventory & Procurement Reports - GabayMed</title>
     <link rel="stylesheet" href="../assets/css/doctor-dashboard.css">
     <link rel="stylesheet" href="../assets/css/admin-dashboard.css">
-    <link rel="stylesheet" href="../assets/css/inventory-procurement.css">
     <link rel="stylesheet" href="../assets/css/admin-inventory-reports.css">
 </head>
 
@@ -112,7 +217,7 @@ $current_page = 'reports';
                 <div>
                     <a href="hospital-reports.php" class="reports-back-link">&larr; Hospital Reports</a>
                     <h1>Inventory &amp; Procurement Reports</h1>
-                    <p class="page-subtitle">Hospital-wide inventory oversight. Sample data shown &mdash; not yet connected to live records.</p>
+                    <p class="page-subtitle">Hospital-wide inventory oversight, live from purchase requests, orders, deliveries, and reconciliation records.</p>
                 </div>
             </header>
 
@@ -120,7 +225,7 @@ $current_page = 'reports';
             <section class="card reports-filter-bar">
                 <div class="card-header">
                     <h2>Filters</h2>
-                    <span class="card-subtitle">UI preview only</span>
+                    <span class="card-subtitle">Filters apply to the report currently shown below</span>
                 </div>
                 <div class="toolbar-filters">
                     <select class="filter-select" id="reportTypeFilter" aria-label="Report Type">
@@ -159,7 +264,7 @@ $current_page = 'reports';
                 <div class="card-header">
                     <div>
                         <h2 id="previewTitle">Purchase Request History</h2>
-                        <span class="card-subtitle" id="previewSubtitle">Sample data</span>
+                        <span class="card-subtitle" id="previewSubtitle">Loading&hellip;</span>
                     </div>
                     <div class="report-preview-header-actions">
                         <button type="button" class="btn btn-secondary btn-sm" id="previewPrintBtn">Print</button>
@@ -186,86 +291,17 @@ $current_page = 'reports';
 
     <script>
         // ============================================================
-        // UI ONLY — mock report data. Status pill classes reuse the exact
-        // ones already defined for these statuses elsewhere in the Admin
-        // Portal (status-pr-* / status-po-* from inventory-procurement.css,
-        // status-match/status-mismatch and status-normal/status-low-stock/
-        // status-out-of-stock reproduced in admin-inventory-reports.css)
-        // so a status reads identically wherever it's shown. Swap each
-        // `rows` array for a real query result when this module is wired
-        // up for real.
-        // ============================================================
-        const REPORTS = {
-            'purchase-requests': {
-                title: 'Purchase Request History',
-                columns: ['Date', 'Medicine', 'Requested By', 'Qty', 'Priority', 'Status'],
-                dateColumnIndex: 0,
-                rows: [
-                    ['Jul 15, 2026', 'Losartan 50mg', 'J. Reyes (Pharmacist)', '50', 'High', '<span class="status-pill status-pr-pending">Pending Approval</span>'],
-                    ['Jul 10, 2026', 'Ibuprofen 200mg', 'A. Cruz (Pharmacist)', '100', 'Medium', '<span class="status-pill status-pr-approved">Approved</span>'],
-                    ['Jul 8, 2026', 'Insulin Regular (Humulin R)', 'J. Reyes (Pharmacist)', '25', 'Critical', '<span class="status-pill status-pr-revision_requested">Revision Requested</span>'],
-                    ['Jul 5, 2026', 'Salbutamol Nebule 2.5mg', 'A. Cruz (Pharmacist)', '40', 'Medium', '<span class="status-pill status-pr-completed">Completed</span>'],
-                    ['Jun 28, 2026', 'Cetirizine 10mg', 'J. Reyes (Pharmacist)', '60', 'Low', '<span class="status-pill status-pr-purchase_ordered">Purchase Ordered</span>'],
-                    ['Jun 20, 2026', 'Metformin 500mg', 'A. Cruz (Pharmacist)', '35', 'Medium', '<span class="status-pill status-pr-rejected">Rejected</span>'],
-                ],
-            },
-            'purchase-orders': {
-                title: 'Purchase Order Summary',
-                columns: ['PO Number', 'Medicine', 'Supplier', 'Boxes Ordered', 'Status'],
-                dateColumnIndex: null,
-                rows: [
-                    ['PO-2026-0088', 'Amoxicillin 500mg', 'MedSupply Corp', '12', '<span class="status-pill status-po-awaiting_delivery">Awaiting Delivery</span>'],
-                    ['PO-2026-0091', 'Paracetamol 500mg', 'PharmaLink Distributors', '20', '<span class="status-pill status-po-po_issued">PO Issued</span>'],
-                    ['PO-2026-0093', 'Losartan 50mg', 'MedSupply Corp', '8', '<span class="status-pill status-po-po_issued">PO Issued</span>'],
-                    ['PO-2026-0079', 'Cefalexin 500mg', 'MedSupply Corp', '15', '<span class="status-pill status-po-delivered">Delivered</span>'],
-                    ['PO-2026-0082', 'Metformin 500mg', 'PharmaLink Distributors', '30', '<span class="status-pill status-po-completed">Completed</span>'],
-                ],
-            },
-            'delivery-timeliness': {
-                title: 'Delivery Timeliness Report',
-                columns: ['PO Number', 'Supplier', 'Expected Delivery', 'Actual Delivery', 'Status'],
-                dateColumnIndex: null,
-                rows: [
-                    ['PO-2026-0079', 'MedSupply Corp', 'Jul 16, 2026', 'Jul 17, 2026', '<span class="status-pill status-delayed">Delayed &middot; 1 day</span>'],
-                    ['PO-2026-0082', 'PharmaLink Distributors', 'Jul 16, 2026', 'Jul 16, 2026', '<span class="status-pill status-on-time">On Time</span>'],
-                    ['PO-2026-0084', 'MedSupply Corp', 'Jul 15, 2026', 'Jul 14, 2026', '<span class="status-pill status-on-time">On Time</span>'],
-                    ['PO-2026-0071', 'PharmaLink Distributors', 'Jul 9, 2026', 'Jul 12, 2026', '<span class="status-pill status-delayed">Delayed &middot; 3 days</span>'],
-                ],
-            },
-            'supplier-performance': {
-                title: 'Supplier Performance Report',
-                columns: ['Supplier', 'POs Fulfilled', 'On-Time Rate', 'Avg. Delay (days)'],
-                dateColumnIndex: null,
-                rows: [
-                    ['MedSupply Corp', '18', '<span class="status-pill status-on-time">89%</span>', '0.4'],
-                    ['PharmaLink Distributors', '11', '<span class="status-pill status-delayed">64%</span>', '1.8'],
-                ],
-            },
-            'reconciliation-discrepancy': {
-                title: 'Reconciliation Discrepancy Report',
-                columns: ['Date', 'Medicine', 'Pharmacist', 'System Stock', 'Physical Count', 'Difference'],
-                dateColumnIndex: 0,
-                rows: [
-                    ['Jul 17, 2026', 'Paracetamol 500mg', 'J. Reyes', '112', '108', '<span class="status-pill status-mismatch">-4 &middot; Mismatch</span>'],
-                    ['Jul 17, 2026', 'Cetirizine 10mg', 'J. Reyes', '84', '84', '<span class="status-pill status-match">0 &middot; Match</span>'],
-                    ['Jul 10, 2026', 'Losartan 50mg', 'A. Cruz', '30', '30', '<span class="status-pill status-match">0 &middot; Match</span>'],
-                    ['Jul 3, 2026', 'Amoxicillin 500mg', 'A. Cruz', '46', '41', '<span class="status-pill status-mismatch">-5 &middot; Mismatch</span>'],
-                ],
-            },
-            'inventory-overview': {
-                title: 'Inventory Stock Overview',
-                columns: ['Medicine', 'Current Stock', 'Minimum Stock', 'Status'],
-                dateColumnIndex: null,
-                rows: [
-                    ['Amoxicillin 500mg', '46', '30', '<span class="status-pill status-normal">Normal</span>'],
-                    ['Paracetamol 500mg', '112', '40', '<span class="status-pill status-normal">Normal</span>'],
-                    ['Losartan 50mg', '18', '25', '<span class="status-pill status-low-stock">Low Stock</span>'],
-                    ['Metformin 500mg', '58', '30', '<span class="status-pill status-normal">Normal</span>'],
-                    ['Ibuprofen 200mg', '0', '20', '<span class="status-pill status-out-of-stock">Out of Stock</span>'],
-                    ['Cetirizine 10mg', '84', '25', '<span class="status-pill status-normal">Normal</span>'],
-                ],
-            },
-        };
+        // BUG FIX (2026-07-23): this used to be a hardcoded REPORTS object,
+        // completely disconnected from the six real queries that build
+        // $reportsData near the top of this file. The header comment
+        // claimed those queries were already wired in — they were real
+        // queries, but nothing ever sent their results here, so this
+        // block was still 100% mock data (it even still had the fake
+        // 'Purchase Ordered' status the header comment claimed was
+        // already removed). Now genuinely wired: $reportsData is
+        // json_encode'd straight into this constant, so the shape below
+        // is real hospital data, not a copy of it.
+        const REPORTS = <?php echo json_encode($reportsData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 
         const reportTypeFilter = document.getElementById('reportTypeFilter');
         const dateFrom = document.getElementById('dateFrom');
@@ -278,7 +314,7 @@ $current_page = 'reports';
         const previewTable = document.getElementById('previewTable');
         const previewEmptyState = document.getElementById('previewEmptyState');
 
-        let activeKey = 'purchase-requests';
+        let activeKey = 'stock-received';
 
         // Renders REPORTS[key] into the preview table, then re-applies the
         // current search/date filters so switching reports never leaves a
@@ -291,7 +327,7 @@ $current_page = 'reports';
             if (reportTypeFilter.value !== key) reportTypeFilter.value = key;
 
             previewTitle.textContent = report.title;
-            previewSubtitle.textContent = `${report.rows.length} sample record${report.rows.length === 1 ? '' : 's'}`;
+            previewSubtitle.textContent = `${report.rows.length} record${report.rows.length === 1 ? '' : 's'}`;
 
             previewThead.innerHTML = '<tr>' + report.columns.map(c => `<th>${c}</th>`).join('') + '</tr>';
             previewTbody.innerHTML = report.rows.map(row => {
@@ -350,15 +386,23 @@ $current_page = 'reports';
         // pharmacist/reports.php: no PDF library, opens a clean read-only
         // version in a new tab and triggers the browser's native print
         // dialog, where the person picks "Save as PDF" as the destination.
+        //
+        // FIXED (2026-08-22): status-pr-*/status-po-* selectors here were
+        // for Purchase Request History / Purchase Order Summary, both
+        // removed along with the rest of the procurement pipeline (see
+        // 018_replace_procurement_with_funding_source.sql). Replaced with
+        // status-source-* for Stock Received Report's funding-source
+        // badges — same 5 values as $sourceLabels above.
         const PDF_STATUS_PILL_CSS = `
             .status-pill { display:inline-block; padding:4px 11px; border-radius:999px; font-size:11.5px; font-weight:600; }
-            .status-normal, .status-match, .status-pr-approved, .status-po-delivered, .status-po-completed, .status-on-time { background:#e7f7f0; color:#22a06b; }
-            .status-low-stock, .status-pr-pending { background:#fef3e0; color:#f5a524; }
-            .status-near-expiry, .status-pr-revision_requested, .status-pr-purchase_ordered, .status-po-po_issued { background:#eaf1ff; color:#2f6fed; }
-            .status-po-awaiting_delivery { background:#fef3e0; color:#f5a524; }
-            .status-expired, .status-mismatch, .status-pr-rejected, .status-delayed { background:#fdeaea; color:#ef4444; }
+            .status-normal, .status-match, .status-on-time { background:#e7f7f0; color:#22a06b; }
+            .status-low-stock { background:#fef3e0; color:#f5a524; }
+            .status-near-expiry { background:#eaf1ff; color:#2f6fed; }
+            .status-expired, .status-mismatch, .status-delayed { background:#fdeaea; color:#ef4444; }
             .status-out-of-stock { background:#ef4444; color:#ffffff; }
-            .status-pr-completed { background:#eef1f4; color:#6b7785; }
+            .status-source-maip, .status-source-philhealth, .status-source-pho { background:#eaf1ff; color:#2f6fed; }
+            .status-source-purchase_order { background:#fef3e0; color:#f5a524; }
+            .status-source-donated { background:#e7f7f0; color:#22a06b; }
         `;
 
         function exportPdf(key) {
@@ -401,7 +445,7 @@ $current_page = 'reports';
         <h1>${report.title}</h1>
         <span class="pdf-brand">GabayMed &middot; Admin Portal</span>
     </div>
-    <div class="pdf-meta">Generated ${generatedAt} &middot; Sample data (UI preview, not yet connected to live records)</div>
+    <div class="pdf-meta">Generated ${generatedAt} &middot; GabayMed Hospital Management System</div>
     <table>
         <thead>${theadHtml}</thead>
         <tbody>${rowsHtml}</tbody>

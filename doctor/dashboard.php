@@ -201,12 +201,26 @@ unset($_SESSION['consultation_flash']);
             <?php if ($flash): ?>
                 <section class="card" style="border-left: 4px solid <?php echo $flash['type'] === 'error' ? 'var(--red)' : 'var(--teal)'; ?>; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
                     <p style="margin: 0; font-size: 14px;"><?php echo htmlspecialchars($flash['message']); ?></p>
-                    <?php if (!empty($flash['consultation_id'])): ?>
-                        <a href="print-consultation.php?consultation_id=<?php echo (int) $flash['consultation_id']; ?>"
-                            target="_blank" class="btn btn-secondary" style="white-space: nowrap;">
-                            Print Visit Summary
-                        </a>
-                    <?php endif; ?>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <?php if (!empty($flash['consultation_id'])): ?>
+                            <a href="print-consultation.php?consultation_id=<?php echo (int) $flash['consultation_id']; ?>"
+                                target="_blank" class="btn btn-secondary" style="white-space: nowrap;">
+                                Print Visit Summary
+                            </a>
+                        <?php endif; ?>
+                        <?php if (!empty($flash['has_prescription']) && !empty($flash['consultation_id'])): ?>
+                            <a href="print-pharmacy-slip.php?consultation_id=<?php echo (int) $flash['consultation_id']; ?>"
+                                target="_blank" class="btn btn-secondary" style="white-space: nowrap;">
+                                Print Pharmacy Slip
+                            </a>
+                        <?php endif; ?>
+                        <?php if (!empty($flash['has_lab_order']) && !empty($flash['consultation_id'])): ?>
+                            <a href="print-lab-order.php?consultation_id=<?php echo (int) $flash['consultation_id']; ?>"
+                                target="_blank" class="btn btn-secondary" style="white-space: nowrap;">
+                                Print Lab Order
+                            </a>
+                        <?php endif; ?>
+                    </div>
                 </section>
             <?php endif; ?>
 

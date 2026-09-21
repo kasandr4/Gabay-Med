@@ -153,10 +153,16 @@ $current_page = 'follow-up';
             </header>
 
             <?php if ($flash): ?>
-                <section class="card" style="border-left: 4px solid <?php echo $flash['type'] === 'error' ? 'var(--red)' : 'var(--teal)'; ?>; margin-bottom: 20px;">
+                <section class="card" style="border-left: 4px solid <?php echo $flash['type'] === 'error' ? 'var(--red)' : 'var(--teal)'; ?>; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
                     <p style="margin: 0; font-size: 14px; color: <?php echo $flash['type'] === 'error' ? 'var(--red)' : 'var(--text-primary)'; ?>;">
                         <?php echo htmlspecialchars($flash['message']); ?>
                     </p>
+                    <?php if (!empty($flash['has_lab_order']) && !empty($flash['consultation_id'])): ?>
+                        <a href="print-lab-order.php?consultation_id=<?php echo (int) $flash['consultation_id']; ?>"
+                            target="_blank" class="btn btn-secondary" style="white-space: nowrap;">
+                            Print Lab Order
+                        </a>
+                    <?php endif; ?>
                 </section>
             <?php endif; ?>
 
@@ -259,7 +265,7 @@ $current_page = 'follow-up';
                                                 <?php if ($item['status'] === 'scheduled'): ?>
                                                     <div class="table-actions">
                                                         <form method="POST" action="follow-up-update.php" style="display:inline;">
-                                                        <?= csrf_field() ?>
+                                                            <?= csrf_field() ?>
                                                             <input type="hidden" name="follow_up_id" value="<?php echo (int) $item['id']; ?>">
                                                             <input type="hidden" name="action" value="complete">
                                                             <button class="btn-view-consult btn-mark-complete" type="submit">
@@ -267,7 +273,7 @@ $current_page = 'follow-up';
                                                             </button>
                                                         </form>
                                                         <form method="POST" action="follow-up-update.php" style="display:inline;">
-                                                        <?= csrf_field() ?>
+                                                            <?= csrf_field() ?>
                                                             <input type="hidden" name="follow_up_id" value="<?php echo (int) $item['id']; ?>">
                                                             <input type="hidden" name="action" value="cancel">
                                                             <button class="btn-cancel-followup" type="submit">
@@ -315,7 +321,7 @@ $current_page = 'follow-up';
                             <h2>Schedule New Follow-Up</h2>
                         </div>
                         <form id="scheduleFollowUpForm" class="consultation-form" method="POST" action="follow-up-process.php">
-                        <?= csrf_field() ?>
+                            <?= csrf_field() ?>
                             <input type="hidden" name="appointment_id" value="<?php echo (int) $prefillAppointmentId; ?>">
                             <div class="form-group">
                                 <label class="form-label" for="followUpPatientName">Patient Name <span class="required">*</span></label>

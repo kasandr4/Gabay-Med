@@ -319,6 +319,22 @@ select:focus {
   color: var(--primary);
 }
 
+/* Hide the browser's own built-in password reveal/clear icons - we
+   already have our own .toggle-password eye button above, so the
+   native one just duplicates it (and sits in the same corner,
+   overlapping ours in Chromium). ::-ms-reveal/::-ms-clear cover
+   Edge/IE; ::-webkit-textfield-decoration-container covers Chromium's
+   built-in reveal icon (Chrome 130+) - only affects password fields
+   since the selector is scoped to input[type="password"]. */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+input[type="password"]::-webkit-textfield-decoration-container {
+  visibility: hidden;
+}
+
 /* ===== Live password requirement checklist ===== */
 .password-checklist {
   list-style: none;

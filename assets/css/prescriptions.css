@@ -5,6 +5,20 @@
    --white, --bg-light) so this page matches the rest of the Patient Portal.
 */
 
+/* This page's stylesheet set (dashboard.css + prescriptions.css) never
+   pulls in doctor-dashboard.css, which is where .table-wrap { overflow-x:
+   auto } actually lives - so on the Patient Portal this div rendered with
+   no CSS at all. With .rx-table at width:100%, the browser had no choice
+   but to shrink every column (and wrap "Dr. First Last" onto 3 lines,
+   stack the View Details / Print buttons, etc.) to force the whole table
+   into the phone's viewport instead of scrolling. Defining it here makes
+   this page self-sufficient rather than depending on a stylesheet it
+   doesn't load. */
+.table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .rx-table {
     width: 100%;
     border-collapse: collapse;
@@ -45,6 +59,26 @@
 .status-chip-confined {
     background: rgba(11, 143, 172, 0.12);
     color: var(--primary-dark);
+}
+
+/* Prescription fill-status variants for the table's STATUS column -
+   rolled up from the per-medicine dispense status (see computeFillStatus()
+   in prescriptions.php). Colors intentionally match .rx-chip-pending/
+   -dispensed/-void below, so the table and the "View Details" modal read
+   as the same status language. */
+.status-chip-pending {
+    background: #FFF7E6;
+    color: #92610A;
+}
+
+.status-chip-dispensed {
+    background: #EAF7F2;
+    color: #1F6F5C;
+}
+
+.status-chip-void {
+    background: #FCEBEA;
+    color: #A32A21;
 }
 
 .btn-view-rx {
@@ -368,6 +402,43 @@
     letter-spacing: 0.03em;
 }
 
+/* Per-medicine dispense status chip (see prescriptions.js) - matches the
+   same visual language as .status-chip-discharged/-confined above, just
+   using the .rx-chip base instead since these live inside the medicine
+   card, not the outer table. */
+.rx-chip-pending {
+    background: #FFF7E6;
+    color: #92610A;
+    border-color: #F5D998;
+}
+
+.rx-chip-dispensed {
+    background: #EAF7F2;
+    color: #1F6F5C;
+    border-color: #BEE6D6;
+}
+
+.rx-chip-void {
+    background: #FCEBEA;
+    color: #A32A21;
+    border-color: #F3C6C2;
+}
+
+/* Lab-order-specific statuses (2026-09-17 - see
+   025_lab_order_queue_and_lab_staff_type.sql). .rx-chip-pending above is
+   shared as-is (same meaning, same color); these two are lab-only. */
+.rx-chip-accepted {
+    background: #E6F1FB;
+    color: #0C447C;
+    border-color: #B5D4F4;
+}
+
+.rx-chip-completed {
+    background: #EAF7F2;
+    color: #1F6F5C;
+    border-color: #BEE6D6;
+}
+
 @media (max-width: 640px) {
     .rx-meta-grid {
         grid-template-columns: 1fr;
@@ -381,5 +452,9 @@
 
     .rx-table {
         font-size: 13px;
+        /* Floor width so columns keep readable proportions and the row
+           scrolls horizontally (via .table-wrap above) instead of
+           squeezing every cell down to fit the phone's viewport. */
+        min-width: 620px;
     }
 }

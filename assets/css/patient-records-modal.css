@@ -214,6 +214,20 @@ body.modal-open {
     font-weight: 600;
 }
 
+/* Small heading for a nested block inside a modal card - e.g. the
+   "Prescriptions" / "Laboratory Orders" sub-tables inside each visit
+   card on the Appointment History page. */
+.modal-subsection-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 18px 0 8px;
+}
+
+.modal-subsection-title:first-child {
+    margin-top: 4px;
+}
+
 .modal-loading,
 .modal-error {
     padding: 40px 0;

@@ -1,0 +1,416 @@
+/* Admin medicine catalog module. */
+
+.mc-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.mc-search {
+    width: min(360px, 100%);
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.mc-search:focus,
+.mc-modal input:focus,
+.mc-modal select:focus {
+    outline: none;
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(34, 153, 137, 0.12);
+}
+
+/* The catalog uses .data-table, while the older portal base styles only
+   define .queue-table. Keep this table aligned with the existing table look. */
+.mc-toolbar + .table-wrap {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    font-size: 13.5px;
+}
+
+.data-table thead th {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.data-table tbody td {
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+    background: #fafbfc;
+}
+
+.mc-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 23, 30, 0.52);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.mc-modal-backdrop.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.mc-modal {
+    width: min(620px, calc(100vw - 48px));
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 22px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+}
+
+.mc-modal-header,
+.mc-modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.mc-modal-header {
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.mc-modal-header h3 {
+    margin: 0;
+    font-size: 17px;
+}
+
+.mc-modal-close {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.mc-form {
+    padding-top: 18px;
+}
+
+.mc-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.mc-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.mc-field input,
+.mc-field select {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-primary);
+    font: inherit;
+    font-weight: 400;
+}
+
+.mc-form-error {
+    display: none;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--red-light);
+    color: var(--red);
+    font-size: 13px;
+}
+
+.mc-form-error.active {
+    display: block;
+}
+
+.mc-modal-actions {
+    justify-content: flex-end;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.mc-muted {
+    display: block;
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.mc-legacy-flag {
+    display: inline-block;
+    margin-left: 7px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--amber-light);
+    color: var(--amber);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.mc-source-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    color: #075985;
+    background: #e0f2fe;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.mc-source-badge.mc-source-philhealth {
+    color: #92400e;
+    background: #fef3c7;
+}
+
+.mc-source-badge.mc-source-pho {
+    color: #5b21b6;
+    background: #ede9fe;
+}
+
+.mc-source-badge.mc-source-purchase_order {
+    color: #1e40af;
+    background: #dbeafe;
+}
+
+.mc-source-badge.mc-source-donated {
+    color: #3f6212;
+    background: #ecfccb;
+}
+
+.mc-source-badge.mc-source-mixed {
+    color: #6b21a8;
+    background: #f3e8ff;
+}
+
+.mc-no-source {
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* Legend + row tints, mirroring the color-coded-by-source layout of the
+   physical INVENTORY STOCKS sheet (each row tinted by funding source). */
+.mc-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.mc-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mc-legend-swatch {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+}
+
+.mc-legend-swatch.mc-source-maip,
+.mc-row-maip {
+    background: #e0f2fe;
+}
+
+.mc-legend-swatch.mc-source-philhealth,
+.mc-row-philhealth {
+    background: #fef3c7;
+}
+
+.mc-legend-swatch.mc-source-pho,
+.mc-row-pho {
+    background: #ede9fe;
+}
+
+.mc-legend-swatch.mc-source-purchase_order,
+.mc-row-purchase_order {
+    background: #dbeafe;
+}
+
+.mc-legend-swatch.mc-source-donated,
+.mc-row-donated {
+    background: #ecfccb;
+}
+
+.mc-legend-swatch.mc-source-count_adjustment,
+.mc-row-count_adjustment {
+    background: #fce7f3;
+}
+
+.data-table tbody tr[class^="mc-row-"] td,
+.data-table tbody tr[class*=" mc-row-"] td {
+    border-bottom-color: rgba(15, 23, 30, 0.08);
+}
+
+.data-table tbody tr[class^="mc-row-"]:hover td,
+.data-table tbody tr[class*=" mc-row-"]:hover td {
+    filter: brightness(0.97);
+}
+
+.data-table th:nth-child(4),
+.data-table th:nth-child(5),
+.data-table th:nth-child(6),
+.data-table td:nth-child(4),
+.data-table td:nth-child(5),
+.data-table td:nth-child(6) {
+    text-align: right;
+}
+
+.mc-reference-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.mc-reference-card .card-header {
+    margin-bottom: 16px;
+}
+
+.mc-reference-card .card-header h2 {
+    margin-bottom: 4px;
+}
+
+.mc-reference-form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.mc-reference-form input {
+    min-width: 0;
+    flex: 1;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-primary);
+    font: inherit;
+}
+
+.mc-reference-form input:focus {
+    outline: none;
+    border-color: var(--teal);
+}
+
+.mc-reference-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 190px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.mc-reference-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.mc-remove-reference {
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--red-light);
+    color: var(--red);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.mc-remove-reference:hover {
+    background: var(--red);
+    color: #ffffff;
+}
+
+@media (max-width: 640px) {
+    .mc-toolbar,
+    .mc-form-grid,
+    .mc-reference-grid {
+        align-items: stretch;
+        grid-template-columns: 1fr;
+        flex-direction: column;
+    }
+
+    .mc-search {
+        width: 100%;
+    }
+
+    .mc-modal-backdrop {
+        align-items: flex-start;
+        padding: 14px;
+        overflow-y: auto;
+    }
+
+    .mc-modal {
+        width: 100%;
+        max-height: calc(100vh - 28px);
+        padding: 16px;
+    }
+}

@@ -552,25 +552,46 @@
     margin-bottom: 0;
 }
 
-/* The Weekly Overrides tab mixes a bare banner div, conditional warning
-   banner, a stats grid, a legend, and card sections as direct siblings.
-   Rather than rely on each of those (from mixed stylesheets) to carry
-   perfectly matching, non-colliding margins, this tab panel takes full
-   control of vertical spacing via flex + gap and neutralizes each child's
-   own top/bottom margin so nothing can visually overlap. */
-#ds-tab-panel-weekly.active {
+/* The Reschedule History tab mixes a bare banner div, a doctor-filter
+   card, and the history table card as direct siblings (this tab used to
+   be "Weekly Overrides" - id kept in sync with the rename in
+   admin/doctor-schedule.php so this spacing rule still applies). Rather
+   than rely on each of those (from mixed stylesheets) to carry perfectly
+   matching, non-colliding margins, this tab panel takes full control of
+   vertical spacing via flex + gap and neutralizes each child's own
+   top/bottom margin so nothing can visually overlap. */
+#ds-tab-panel-history.active {
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
 
-#ds-tab-panel-weekly.active > * {
+#ds-tab-panel-history.active > * {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* The Weekly Recurring Schedule tab has the same bare-banner + card + card
+   sibling mix as the two tabs above, but never got this treatment - its
+   two cards (doctor roster, schedule table) sat flush against each other
+   with no gap since .card's own spacing rule only fires for cards that
+   are direct children of .main-content, not of a .ds-tab-panel. */
+#ds-tab-panel-recurring.active {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+#ds-tab-panel-recurring.active > * {
     margin-top: 0;
     margin-bottom: 0;
 }
 
 /* =========================================================================
-   Weekly Overrides tab
+   Shared banner/table styles (originally built for the "Weekly Overrides"
+   tab, kept under the wo- prefix; now reused by the Reschedule History and
+   Weekly Recurring Schedule tabs' intro banners too - see admin/doctor-
+   schedule.php)
    ========================================================================= */
 
 .wo-intro-banner {
@@ -703,6 +724,24 @@
     padding: 3px 9px;
 }
 
+/* ---- Status pills for the 4-bucket calendar_status
+   (staff/schedule-conflicts.php's read-only Doctor Availability page).
+   Kept visually consistent with the override pills above (same teal/
+   amber/red language) but keyed to resolve_effective_schedule()'s
+   simpler on_duty summary rather than the raw override enum. */
+.da-status-pill-available { background: var(--teal-light); color: var(--teal-dark); }
+.da-status-pill-half_day { background: var(--amber-light); color: #92650f; }
+.da-status-pill-leave { background: var(--red-light); color: var(--red); }
+.da-status-pill-off_duty { background: var(--bg); color: var(--text-muted); }
+
+.da-status-pill-available,
+.da-status-pill-half_day,
+.da-status-pill-leave,
+.da-status-pill-off_duty {
+    font-size: 11px;
+    padding: 3px 9px;
+}
+
 /* Left accent on the row so overridden days scan quickly down the table. */
 .wo-row-half_day { box-shadow: inset 3px 0 0 var(--amber); }
 .wo-row-emergency_leave { box-shadow: inset 3px 0 0 var(--red); }
@@ -743,5 +782,297 @@
 
     .wo-action-cell {
         flex-direction: column;
+    }
+}
+/* ===================================================================
+   Weekly Recurring Schedule tab (REAL, backend-connected)
+   =================================================================== */
+
+.rs-actions-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.rs-btn-sm {
+    padding: 6px 10px;
+    font-size: 0.8125rem;
+}
+
+.rs-btn-danger {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+
+.rs-btn-danger:hover {
+    background: #fee2e2;
+}
+
+.rs-empty-text {
+    color: var(--text-secondary, #6b7280);
+    padding: 12px 4px;
+}
+
+.rs-modal-error {
+    display: none;
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 0 2px 14px;
+    font-size: 0.875rem;
+}
+
+.rs-modal-error-visible {
+    display: block;
+}
+
+@media (max-width: 640px) {
+    .rs-actions-cell {
+        flex-direction: column;
+    }
+}
+/* --------------------------------------------------------------------
+   Doctor Portal — My Schedule page: per-day "Update Availability" /
+   "Reset" action buttons inside .schedule-day-block-header (defined in
+   doctor-dashboard.css). Header already uses display:flex; this just
+   lets it wrap gracefully now that a day can show a status pill, an
+   override pill, the hours subtitle, AND these buttons at once.
+   -------------------------------------------------------------------- */
+.schedule-day-block-header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+}
+
+.my-schedule-day-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.my-schedule-avail-btn,
+.my-schedule-reset-btn {
+    padding: 6px 12px;
+    font-size: 0.8125rem;
+}
+
+@media (max-width: 640px) {
+    .my-schedule-day-actions {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .my-schedule-day-actions .btn {
+        flex: 1;
+    }
+}
+
+/* --------------------------------------------------------------------
+   Staff Portal — Schedule Conflicts page: reuses assets/css/booking.css
+   (the patient booking slot-grid) unchanged for the "Reschedule" modal,
+   rather than duplicating those ~140 lines of table/button styling.
+   booking.css was written against assets/css/dashboard.css's variable
+   names (--primary, --border-color, etc.), which don't exist in this
+   portal's doctor-dashboard.css (--teal, --border, etc.). This block is
+   ONLY a variable name shim - no class rules - so booking.css's actual
+   styles apply correctly here without pulling in dashboard.css itself
+   (which would collide with doctor-dashboard.css's sidebar/card/table
+   rules across the rest of the Staff Portal).
+   -------------------------------------------------------------------- */
+:root {
+    --primary: var(--teal);
+    --primary-dark: var(--teal-dark);
+    --sage: var(--teal-light);
+    --bg-light: var(--bg);
+    --border-color: var(--border);
+    --error: var(--red);
+    --amber-bg: var(--amber-light);
+    --text-dark: var(--text-primary);
+    --text-muted: var(--text-secondary);
+    --white: var(--surface);
+}
+
+/* --------------------------------------------------------------------
+   Staff Portal — Schedule Conflicts: wider centered modal variant for
+   the Reschedule slot-picker (the 15-day slot-grid table from
+   booking.css needs more horizontal room than the 480px default
+   .ds-modal-box-centered used for the day-editor style modals).
+   -------------------------------------------------------------------- */
+.ds-modal-box-wide {
+    width: min(920px, 96vw);
+}
+
+@media (max-width: 760px) {
+    .ds-modal-box-wide {
+        width: min(480px, 96vw);
+    }
+}
+
+/* --------------------------------------------------------------------
+   Recurring Schedule header ("Set Up New Period" button) - its subtitle
+   is long enough that .schedule-week-header's flex-wrap: wrap (shared
+   with the My Schedule and Weekly Overrides headers elsewhere on this
+   page) would drop the button onto its own line, left-aligned, instead
+   of staying on the right. Scoped override: keep this one header on a
+   single row, let the text column shrink/wrap internally instead.
+   -------------------------------------------------------------------- */
+.rs-header-no-wrap {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.rs-header-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rs-header-no-wrap #pbOpenBtn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .rs-header-no-wrap {
+        flex-wrap: wrap;
+    }
+}
+
+/* --------------------------------------------------------------------
+   "Set Up OPD Schedule for a New Period" builder - the 7-row day grid
+   inside its .ds-modal-box-wide modal (doctor-schedule.php +
+   doctor-schedule-period-builder.js). Compact inputs so all 7 weekdays
+   fit without the table scrolling internally.
+   -------------------------------------------------------------------- */
+.pb-days-table th,
+.pb-days-table td {
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.pb-days-table .pb-day-enabled {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.pb-days-table .pb-day-start,
+.pb-days-table .pb-day-end {
+    width: 110px;
+}
+
+.pb-days-table .pb-day-max {
+    width: 80px;
+}
+
+@media (max-width: 640px) {
+    .pb-days-table .pb-day-start,
+    .pb-days-table .pb-day-end {
+        width: 92px;
+    }
+
+    .pb-days-table .pb-day-max {
+        width: 64px;
+    }
+}
+
+/* --------------------------------------------------------------------
+   Weekly Recurring Schedule tab - one panel per effective period
+   (doctor-schedule.php's $rsPeriods grouping) instead of a single flat
+   table where several unrelated periods for different weekdays ended up
+   interleaved by day-of-week, reading as confusing/duplicated even
+   though every row was correct.
+   -------------------------------------------------------------------- */
+.rs-period-panel + .rs-period-panel {
+    margin-top: 28px;
+}
+
+.rs-period-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.rs-period-range {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-dark, #1f2937);
+}
+
+.rs-period-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: color-mix(in srgb, var(--primary) 15%, transparent);
+    color: var(--primary-dark, var(--primary));
+}
+
+.rs-period-current .rs-period-heading {
+    padding-left: 10px;
+    border-left: 3px solid var(--primary);
+}
+
+/* --------------------------------------------------------------------
+   Schedule Conflicts page - bulk reschedule action bar
+   (staff/schedule-conflicts.php + assets/js/staff-bulk-reschedule.js).
+   -------------------------------------------------------------------- */
+.sc-bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    margin: 0 0 14px;
+    border-radius: var(--radius-md);
+    background: var(--teal-light);
+    color: var(--teal-dark);
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+/* --------------------------------------------------------------------
+   Doctor Availability page (staff/schedule-conflicts.php) - search/
+   filter bar (doctor name, department, date) and the day-navigation
+   row underneath it.
+   -------------------------------------------------------------------- */
+.da-filter-bar {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.da-filter-bar .um-field {
+    margin-bottom: 0;
+    min-width: 180px;
+}
+
+.da-filter-bar input[type="date"] {
+    min-width: 150px;
+}
+
+.da-day-nav {
+    margin-bottom: 16px;
+}
+
+@media (max-width: 640px) {
+    .da-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .da-filter-bar .um-field {
+        min-width: 0;
     }
 }

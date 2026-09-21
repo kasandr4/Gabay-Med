@@ -72,20 +72,115 @@ textarea:focus {
   flex: none;
 }
 
-.booking-override {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border-color);
+.booking-when-picker {
+  margin: 4px 0 18px;
 }
 
-.booking-override select {
-  width: 100%;
-  padding: 11px 14px;
+.when-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.when-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 10px;
+  padding: 16px 14px;
+  cursor: pointer;
+  text-align: center;
+  position: relative;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.when-card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.when-card i,
+.when-card-icon {
+  font-size: 22px;
+  color: var(--text-muted);
+}
+
+.when-card-label {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-dark);
+}
+
+.when-card:has(input:checked) {
+  border: 2px solid var(--primary);
+  padding: 15px 13px;
+  background: var(--bg-light);
+}
+
+.when-card:has(input:checked) i,
+.when-card:has(input:checked) .when-card-icon {
+  color: var(--primary);
+}
+
+/* ===== Symptom checklist (2026-09-16 rework - replaces the old
+   free-text textarea + department/doctor pickers below) ===== */
+.symptom-group {
+  border: none;
+  padding: 0 0 18px;
+  margin: 0 0 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.symptom-group:last-of-type {
+  border-bottom: none;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.symptom-group-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  padding: 0;
+  margin-bottom: 10px;
+}
+
+/* Two tidy columns on wide screens instead of one long stack of
+   checkboxes - falls back to a single column under 600px (see the
+   media query near the bottom of this file). */
+.symptom-group-items {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.symptom-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
   font-size: 14px;
-  margin-bottom: 14px;
-  background: var(--white);
+  line-height: 1.4;
+  color: var(--text-dark);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.symptom-checkbox:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--bg-light);
+}
+
+.symptom-checkbox input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 /* ===== Doctor selection grid ===== */
@@ -332,6 +427,9 @@ textarea:focus {
   .doctor-grid {
     grid-template-columns: 1fr;
   }
+  .symptom-group-items {
+    grid-template-columns: 1fr;
+  }
   .confirmation-row {
     flex-direction: column;
     gap: 4px;
@@ -339,4 +437,180 @@ textarea:focus {
   .confirmation-value {
     text-align: left;
   }
+}
+
+/* ===== Single-page booking sections (progressive unlock) ===== */
+.booking-section {
+  margin-bottom: 18px;
+  transition: opacity 0.15s ease;
+}
+
+.booking-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.section-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--white);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.booking-section-locked .section-number {
+  background: var(--text-muted);
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin: 0;
+}
+
+.booking-section-locked {
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+
+.empty-hint {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.error-inline {
+  font-size: 12.5px;
+  color: var(--error);
+  min-height: 16px;
+  margin: -6px 0 10px;
+}
+
+/* ===== Two-column layout: form + sticky summary ===== */
+.booking-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+}
+
+.booking-main {
+  flex: 1 1 720px;
+  max-width: 720px;
+  min-width: 0;
+}
+
+.booking-summary {
+  flex: 1 1 300px;
+  max-width: 300px;
+  position: sticky;
+  top: 28px;
+}
+
+.summary-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+}
+
+.summary-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.summary-step:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.summary-step:first-child {
+  padding-top: 0;
+}
+
+.summary-step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: #F0F0F0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 1px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.summary-step.is-complete .summary-step-icon {
+  background: var(--sage);
+  color: var(--white);
+}
+
+.summary-step-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 2px;
+}
+
+.summary-step-value {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.summary-step.is-complete .summary-step-value {
+  color: var(--text-dark);
+}
+
+@media (max-width: 900px) {
+  .booking-layout {
+    flex-direction: column;
+  }
+  .booking-main {
+    max-width: none;
+    width: 100%;
+  }
+  .booking-summary {
+    position: static;
+    max-width: none;
+    width: 100%;
+  }
+}
+
+/* .form-input isn't defined in this page's other stylesheets (it lives in
+   doctor-dashboard.css, which isn't loaded here) - defined locally so the
+   department-override <select> injected by book-appointment.js matches
+   the rest of the booking form's inputs. */
+.form-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 14px;
+  background: var(--white);
+  color: var(--text-dark);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(11, 143, 172, 0.12);
 }

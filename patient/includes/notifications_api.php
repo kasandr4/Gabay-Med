@@ -18,7 +18,7 @@ switch ($action) {
 
     case 'list':
         $stmt = $conn->prepare("
-            SELECT notification_id, message, link, is_read, created_at
+            SELECT notification_id, message, type, link, is_read, created_at
             FROM notifications
             WHERE recipient_id = ?
             ORDER BY created_at DESC
@@ -68,7 +68,8 @@ switch ($action) {
 /**
  * Converts a MySQL datetime into a short human-friendly "time ago" string.
  */
-function time_ago($datetime) {
+function time_ago($datetime)
+{
     $diff = time() - strtotime($datetime);
 
     if ($diff < 60) return "just now";
@@ -77,4 +78,3 @@ function time_ago($datetime) {
     if ($diff < 604800) return floor($diff / 86400) . "d ago";
     return date('M j', strtotime($datetime));
 }
-?>

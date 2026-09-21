@@ -95,7 +95,12 @@ create_notification(
     $conn,
     $patientId,
     "A follow-up visit has been scheduled for {$followupDateDisplay}.",
-    "appointment-history.php"
+    // FIXED 2026-08-08: used to link to appointment-history.php, which is
+    // past-visits-only by design (see that file's own query) and never
+    // had any idea follow_ups existed. dashboard.php now actually
+    // displays upcoming follow-ups (see its own header comment), so this
+    // link finally goes somewhere that shows what it promises.
+    "dashboard.php"
 );
 
 backToFollowUps("success", "Follow-up scheduled for $patientName.");

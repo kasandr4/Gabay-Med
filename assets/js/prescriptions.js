@@ -3,6 +3,15 @@
 // Populates and controls the "View Details" modal using prescriptionsData,
 // which is rendered server-side in prescriptions.php and already scoped
 // to the logged-in patient only. No AJAX calls needed.
+//
+// FIXED 2026-09-20: status label text (Pending/Dispensed/Void) now reads
+// from window.rxStatusLabels, embedded by prescriptions.php from
+// includes/status_labels.php's get_rx_status_labels() - was previously
+// hardcoded here too, a second copy of the same three words that had
+// already drifted once between the staff and patient sides for the
+// lab-status equivalent (see lab-orders.js). The inline fallback is only
+// for the case prescriptions.php somehow doesn't embed the global at all,
+// not a second source of truth to keep in sync by hand.
 
 document.addEventListener("DOMContentLoaded", function () {
     initPrescriptionModal();
@@ -35,19 +44,19 @@ function initPrescriptionModal() {
         return;
     }
 
-    function findConsultation(consultationId) {
+    function findRecord(source, id) {
         for (var i = 0; i < prescriptionsData.length; i++) {
-            if (prescriptionsData[i].consultation_id === consultationId) {
+            if (prescriptionsData[i].source === source && prescriptionsData[i].id === id) {
                 return prescriptionsData[i];
             }
         }
         return null;
     }
 
-    function openModal(consultationId) {
-        var record = findConsultation(consultationId);
+    function openModal(source, id) {
+        var record = findRecord(source, id);
         if (!record) {
-            console.error("Prescriptions modal: no record found for consultation_id " + consultationId);
+            console.error("Prescriptions modal: no record found for " + source + " id " + id);
             return;
         }
 
@@ -78,6 +87,12 @@ function initPrescriptionModal() {
             var chips = document.createElement("div");
             chips.className = "rx-medicine-chips";
 
+            var statusLabels = window.rxStatusLabels || { pending: "Pending", dispensed: "Dispensed", void: "Void" };
+            var statusChip = document.createElement("span");
+            statusChip.className = "rx-chip rx-chip-" + (med.dispense_status || "pending");
+            statusChip.innerHTML = '<span class="rx-chip-label">Status:</span>';
+            statusChip.appendChild(document.createTextNode(statusLabels[med.dispense_status] || "Pending"));
+
             var quantityChip = document.createElement("span");
             quantityChip.className = "rx-chip";
             quantityChip.innerHTML = '<span class="rx-chip-label">Quantity:</span>';
@@ -88,6 +103,7 @@ function initPrescriptionModal() {
             instructionsChip.innerHTML = '<span class="rx-chip-label">Instructions:</span>';
             instructionsChip.appendChild(document.createTextNode(med.instructions ? med.instructions : "—"));
 
+            chips.appendChild(statusChip);
             chips.appendChild(quantityChip);
             chips.appendChild(instructionsChip);
 
@@ -111,8 +127,9 @@ function initPrescriptionModal() {
     document.addEventListener("click", function (e) {
         var viewBtn = e.target.closest(".btn-view-rx");
         if (viewBtn) {
-            var consultationId = parseInt(viewBtn.getAttribute("data-consultation-id"), 10);
-            openModal(consultationId);
+            var source = viewBtn.getAttribute("data-source");
+            var id = parseInt(viewBtn.getAttribute("data-id"), 10);
+            openModal(source, id);
             return;
         }
 

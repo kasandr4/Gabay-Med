@@ -4,12 +4,18 @@
 // Shared sidebar navigation for ALL patient-facing pages.
 // Include this AFTER auth_guard.php has already run require_role('patient').
 //
+// COLLAPSIBLE (2026-09): on desktop widths the sidebar collapses to a slim
+// icon rail with the panel button at its top (choice remembered per
+// browser), and its menu scrollbar is hidden. The behaviour, CSS and JS are
+// shared by every portal: see includes/sidebar_collapse.php.
+//
 // USAGE: set $active_page before including this file, so the matching
 // nav item gets highlighted. Example:
 //   $active_page = 'dashboard';
 //   include 'includes/sidebar.php';
 
 require_once __DIR__ . '/../../includes/notifications.php';
+require_once __DIR__ . '/../../includes/sidebar_collapse.php';
 
 if (!isset($active_page)) {
     $active_page = '';
@@ -39,17 +45,32 @@ if (isset($conn) && isset($_SESSION['user_id'])) {
 }
 $restricted_while_confined = ['dashboard', 'book-appointment'];
 
-// Each nav item: [label, icon_path_d, link, page_key]
-// page_key is compared against $active_page to apply the "active" highlight
+// Each nav item: [label, link, page_key, icon]
+// page_key is compared against $active_page to apply the "active" highlight.
+// The icon (a key into $nav_icons below) is what stays visible when the
+// sidebar is collapsed to its icon rail.
 $nav_items = [
-    ['Dashboard',           'dashboard.php',         'dashboard'],
-    ['Book Appointment',    'book-appointment.php',  'book-appointment'],
-    ['Appointment History', 'appointment-history.php', 'appointment-history'],
-    ['Prescriptions',       'prescriptions.php',     'prescriptions'],
-    ['My Confinement',      'confinement-dashboard.php', 'confinement'],
-    ['My Profile',          'profile.php',           'profile'],
+    ['Dashboard',           'dashboard.php',         'dashboard',           'dashboard'],
+    ['Book Appointment',    'book-appointment.php',  'book-appointment',    'calendar-plus'],
+    ['Appointment History', 'appointment-history.php', 'appointment-history', 'history'],
+    ['Prescriptions',       'prescriptions.php',     'prescriptions',       'pill'],
+    ['Laboratory',          'lab-orders.php',        'lab-orders',          'flask'],
+    ['My Confinement',      'confinement-dashboard.php', 'confinement',     'bed'],
+    ['My Profile',          'profile.php',           'profile',             'user'],
+];
+
+// Stroke icons in the same style the staff portals' sidebars use.
+$nav_icons = [
+    'dashboard'     => '<rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect>',
+    'calendar-plus' => '<rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><line x1="12" y1="14" x2="12" y2="18"></line><line x1="10" y1="16" x2="14" y2="16"></line>',
+    'history'       => '<path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 3 3 9 9 9"></polyline><polyline points="12 7 12 12 15 14"></polyline>',
+    'pill'          => '<path d="M10.5 20.5 20.5 10.5a4.95 4.95 0 0 0-7-7l-10 10a4.95 4.95 0 0 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path>',
+    'flask'         => '<path d="M9 3h6"></path><path d="M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9V3"></path><line x1="7.5" y1="14" x2="16.5" y2="14"></line>',
+    'bed'           => '<path d="M3 20v-8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8"></path><path d="M3 16h18"></path><path d="M6 10V7a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"></path>',
+    'user'          => '<circle cx="12" cy="8" r="4"></circle><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"></path>',
 ];
 ?>
+<?php sidebar_collapse_head('patient'); ?>
 <!-- Mobile-only top bar with hamburger toggle -->
 <header class="mobile-topbar">
     <div class="mobile-topbar-left">
@@ -78,9 +99,11 @@ $nav_items = [
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <aside class="sidebar sidebar-dark" id="sidebar">
+    <?php sidebar_collapse_toggle(); ?>
+
     <div class="sidebar-logo">
         <img src="../logo-icon.png" alt="GabayMed logo">
-        <span>GabayMed</span>
+        <span class="brand-text">GabayMed</span>
         <button class="bell-btn bell-btn-desktop" onclick="toggleNotifications()" aria-label="Notifications">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -93,21 +116,25 @@ $nav_items = [
     </div>
 
     <nav class="sidebar-nav">
-        <?php foreach ($nav_items as [$label, $link, $key]):
+        <?php foreach ($nav_items as [$label, $link, $key, $icon]):
             $is_restricted = $patient_confined && in_array($key, $restricted_while_confined, true);
         ?>
             <a href="<?= htmlspecialchars($link) ?>"
                 class="sidebar-link <?= $active_page === $key ? 'active' : '' ?>"
+                title="<?= htmlspecialchars($label) ?>" aria-label="<?= htmlspecialchars($label) ?>"
                 <?php if ($is_restricted): ?>
                 onclick="return showConfinedWarning(event, '<?= htmlspecialchars($label, ENT_QUOTES) ?>')"
                 <?php endif; ?>>
-                <?= htmlspecialchars($label) ?>
+                <svg class="sidebar-link-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <?= $nav_icons[$icon] ?? '' ?>
+                </svg>
+                <span class="sidebar-link-label"><?= htmlspecialchars($label) ?></span>
             </a>
         <?php endforeach; ?>
     </nav>
 
     <div class="sidebar-footer">
-        <div class="sidebar-user">
+        <div class="sidebar-user" title="<?= htmlspecialchars($_SESSION['first_name'] . ' ' . $_SESSION['last_name']) ?>">
             <div class="sidebar-user-avatar">
                 <?= htmlspecialchars(strtoupper(substr($_SESSION['first_name'], 0, 1))) ?>
             </div>
@@ -116,7 +143,14 @@ $nav_items = [
                 <div class="sidebar-user-role">Patient</div>
             </div>
         </div>
-        <a href="../logout.php" class="sidebar-logout">Log Out</a>
+        <a href="../logout.php" class="sidebar-logout" title="Log Out" aria-label="Log Out">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span class="sidebar-logout-label">Log Out</span>
+        </a>
     </div>
 </aside>
 
@@ -131,6 +165,8 @@ $nav_items = [
     </div>
 </div>
 <div class="notification-overlay" id="notification-overlay" onclick="toggleNotifications()"></div>
+
+<?php sidebar_collapse_script(); ?>
 
 <?php if ($patient_confined): ?>
     <!-- Warning panel shown instead of navigating, when a confined patient

@@ -10,7 +10,7 @@ date_default_timezone_set('Asia/Manila');
 $db_host = "localhost";
 $db_user = "root";       // default XAMPP username
 $db_pass = "";           // default XAMPP password is blank
-$db_name = "gabaymed";   // change this if you named your database something else
+$db_name = "gabaymed-og";   // change this if you named your database something else
 
 // Create the connection
 $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
@@ -21,6 +21,12 @@ $conn = new mysqli($db_host, $db_user, $db_pass, $db_name);
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
+
+// Pin MySQL's session clock to Manila (UTC+8, no DST) so NOW()/CURDATE() -
+// used by check-in, the no-show sweep, lab timestamps - agree with PHP's
+// date_default_timezone_set() above no matter what timezone the database
+// server itself runs in. A no-op on a Manila-configured XAMPP host.
+$conn->query("SET time_zone = '+08:00'");
 
 // Force UTF-8 so names with special characters (ñ, etc.) save correctly
 $conn->set_charset("utf8mb4");

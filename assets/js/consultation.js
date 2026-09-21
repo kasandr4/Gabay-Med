@@ -2,17 +2,25 @@
 // GabayMed — Consultation page: outcome toggle + dynamic medicine rows.
 // The actual save happens server-side in consultation-process.php;
 // this file only manages which section of the form is visible and
-// builds the medicine rows the backend expects (medicine_name[], quantity[], instructions[]).
+// builds the medicine rows the backend expects (medicine_id[], quantity[], instructions[]).
 //
-// Each medicine row also shows a live stock hint (In stock / Low stock /
-// Out of stock / Exceeds available stock) read from data-stock on the
-// selected <option>, which comes from a real inventory_medicines query
-// in consultation.php. This is advisory only — it does not block
-// "Issue Prescription", and stock is not actually deducted on submit.
-// See the TODO(backend) note next to medicineOptions in consultation.php.
+// Medicines come from window.medicineOptions, an array of
+// {id, name, available} objects sourced from inventory_medicines (see
+// consultation.php). The <select> value is the catalog medicine_id, not
+// free text — that's what lets a prescription be traced back to a real
+// catalog row later, for staff to verify and dispense against. An item
+// with available === false (current_stock is 0) is still selectable, but
+// labeled "Not available in pharmacy" so the doctor sees it up front.
+//
+// Lab test rows (labTestName[], labTestNotes[]) are handled separately
+// from the outcome logic below - ordering a lab test is optional and
+// independent of whichever outcome the doctor picks, so that section is
+// never hidden/shown by selectOutcome() the way the prescription and
+// confine sections are.
 
 document.addEventListener("DOMContentLoaded", function () {
     initConsultationOutcome();
+    initLabTests();
 });
 
 function initConsultationOutcome() {
@@ -79,14 +87,19 @@ function initConsultationOutcome() {
 
         var optionsHtml = '<option value="">Select medicine</option>';
         (window.medicineOptions || []).forEach(function (med) {
-            optionsHtml += '<option value="' + escapeHtml(med.name) + '" data-stock="' + med.stock + '" data-unit="' + escapeHtml(med.unit) + '">' + escapeHtml(med.name) + "</option>";
+            var label = escapeHtml(med.name);
+            var style = "";
+            if (!med.available) {
+                label += " \u2014 Not available in pharmacy";
+                style = ' style="color:#b91c1c;"';
+            }
+            optionsHtml += '<option value="' + med.id + '"' + style + ">" + label + "</option>";
         });
 
         row.innerHTML =
             '<div>' +
             '<label>Medicine</label>' +
-            '<select name="medicine_name[]" required>' + optionsHtml + '</select>' +
-            '<p class="medicine-stock-hint"></p>' +
+            '<select name="medicine_id[]" required>' + optionsHtml + '</select>' +
             '</div>' +
             '<div>' +
             '<label>Quantity</label>' +
@@ -105,42 +118,6 @@ function initConsultationOutcome() {
         row.querySelector(".medicine-remove-btn").addEventListener("click", function () {
             row.remove();
         });
-
-        var select = row.querySelector('select[name="medicine_name[]"]');
-        var quantityInput = row.querySelector('input[name="quantity[]"]');
-        var stockHint = row.querySelector(".medicine-stock-hint");
-
-        function refreshStockHint() {
-            var opt = select.options[select.selectedIndex];
-            if (!opt || !opt.value) {
-                stockHint.textContent = "";
-                stockHint.className = "medicine-stock-hint";
-                return;
-            }
-
-            var stock = parseInt(opt.getAttribute("data-stock"), 10) || 0;
-            var unit = opt.getAttribute("data-unit") || "units";
-            var requested = parseInt(quantityInput.value, 10); // best-effort: quantity is free text like "30 tablets"
-
-            var label = "In stock: " + stock + " " + unit;
-            var level = "ok";
-            if (stock <= 0) {
-                label = "Out of stock (0 " + unit + " on hand)";
-                level = "danger";
-            } else if (!isNaN(requested) && requested > stock) {
-                label += " \u2014 exceeds available stock";
-                level = "danger";
-            } else if (stock <= 10) {
-                label += " \u2014 low stock";
-                level = "warning";
-            }
-
-            stockHint.textContent = label;
-            stockHint.className = "medicine-stock-hint medicine-stock-hint-" + level;
-        }
-
-        select.addEventListener("change", refreshStockHint);
-        quantityInput.addEventListener("input", refreshStockHint);
 
         medicinesList.appendChild(row);
     }
@@ -174,4 +151,57 @@ function initConsultationOutcome() {
             alert("Please select a consultation outcome before saving.");
         }
     });
+}
+
+// Laboratory Tests section - same add/remove-row pattern as the medicine
+// rows above, but its own list/field names (labTestName[]/labTestNotes[])
+// and reuses the .medicine-row/.medicines-list styling as-is rather than
+// introducing new CSS. Always visible, never toggled by outcome selection.
+function initLabTests() {
+    var labTestsList = document.getElementById("labTestsList");
+    var addLabTestBtn = document.getElementById("addLabTestBtn");
+    if (!labTestsList || !addLabTestBtn) return; // Not on the consultation page
+
+    var labTestRowCount = 0;
+
+    function escapeHtml(str) {
+        var div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function addLabTestRow() {
+        labTestRowCount++;
+        var row = document.createElement("div");
+        row.className = "medicine-row medicine-row-3col";
+        row.setAttribute("data-row-id", labTestRowCount);
+
+        var optionsHtml = '<option value="">Select test</option>';
+        (window.labTestOptions || []).forEach(function (name) {
+            optionsHtml += '<option value="' + escapeHtml(name) + '">' + escapeHtml(name) + "</option>";
+        });
+
+        row.innerHTML =
+            '<div>' +
+            '<label>Test</label>' +
+            '<select name="labTestName[]" required>' + optionsHtml + '</select>' +
+            '</div>' +
+            '<div>' +
+            '<label>Notes</label>' +
+            '<input type="text" name="labTestNotes[]" placeholder="e.g. Fasting required">' +
+            '</div>' +
+            '<button type="button" class="medicine-remove-btn" aria-label="Remove lab test">' +
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>' +
+            '</svg>' +
+            '</button>';
+
+        row.querySelector(".medicine-remove-btn").addEventListener("click", function () {
+            row.remove();
+        });
+
+        labTestsList.appendChild(row);
+    }
+
+    addLabTestBtn.addEventListener("click", addLabTestRow);
 }

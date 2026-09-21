@@ -7,6 +7,14 @@
 session_start(); // starts/resumes the session so we can store "who is logged in"
 require_once 'config/db.php';
 require_once 'includes/csrf.php';
+require_once 'includes/audit_log.php';
+require_once 'includes/system_settings.php';
+
+// FORMERLY hardcoded literals (3 attempts / 60 seconds) — now
+// admin-editable via admin/system-settings.php (system_settings table,
+// category 'security').
+$max_failed_attempts = get_setting_int($conn, 'login_max_failed_attempts', 3);
+$lockout_duration_seconds = get_setting_int($conn, 'login_lockout_seconds', 60);
 
 $errors = [];
 
@@ -39,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($errors)) {
         // Look up the account by phone number
-        $stmt = $conn->prepare("SELECT user_id, role, password, first_name, last_name, is_active, account_status, failed_attempts, lockout_until FROM users WHERE phone_number = ?");
+        $stmt = $conn->prepare("SELECT user_id, role, staff_type, password, first_name, last_name, is_active, account_status, failed_attempts, lockout_until FROM users WHERE phone_number = ?");
         $stmt->bind_param("s", $phone_number);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -59,6 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // hash to it and gives the person a message that actually
             // explains their situation.
             $errors[] = "This account hasn't been set up for online access yet. You can create one at any time using this same mobile number.";
+        } elseif ($user['role'] === 'capitol') {
+            // Provincial Capitol accounts are retired: purchasing after an
+            // approved Purchase Request happens outside GabayMed, so there
+            // is no Capitol portal to sign in to.
+            $errors[] = "Provincial Capitol accounts are no longer used in GabayMed.";
         } elseif (!$user['is_active']) {
             $errors[] = "This account has been deactivated. Please contact the hospital administrator.";
         } elseif ($user['lockout_until'] !== null && strtotime($user['lockout_until']) > time()) {
@@ -72,23 +85,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // anything more specific than that.
             $new_attempts = $user['failed_attempts'] + 1;
 
-            if ($new_attempts >= 3) {
-                // Lock the account for 1 minute and reset the counter
-                $lockout_time = date('Y-m-d H:i:s', time() + 60);
+            if ($new_attempts >= $max_failed_attempts) {
+                // Lock the account and reset the counter
+                $lockout_time = date('Y-m-d H:i:s', time() + $lockout_duration_seconds);
                 $stmt = $conn->prepare("UPDATE users SET failed_attempts = 0, lockout_until = ? WHERE user_id = ?");
                 $stmt->bind_param("si", $lockout_time, $user['user_id']);
                 $stmt->execute();
                 $stmt->close();
 
-                $lockout_seconds_remaining = 60;
-                $errors[] = "Too many failed attempts. Please try again in 60 seconds.";
+                $lockout_seconds_remaining = $lockout_duration_seconds;
+                $errors[] = "Too many failed attempts. Please try again in " . $lockout_duration_seconds . " seconds.";
             } else {
                 $stmt = $conn->prepare("UPDATE users SET failed_attempts = ? WHERE user_id = ?");
                 $stmt->bind_param("ii", $new_attempts, $user['user_id']);
                 $stmt->execute();
                 $stmt->close();
 
-                $remaining = 3 - $new_attempts;
+                $remaining = $max_failed_attempts - $new_attempts;
                 $errors[] = "Incorrect password. " . $remaining . " attempt" . ($remaining === 1 ? "" : "s") . " remaining before lockout.";
             }
         } else {
@@ -109,8 +122,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $_SESSION['user_id']    = $user['user_id'];
             $_SESSION['role']       = $user['role'];
+            $_SESSION['staff_type'] = $user['staff_type']; // null for every non-staff role, harmless
             $_SESSION['first_name'] = $user['first_name'];
             $_SESSION['last_name']  = $user['last_name'];
+
+            // Audit trail entry for the admin portal's activity feeds
+            // (see includes/audit_log.php). Best-effort and non-blocking,
+            // same as every other write_audit_log call in the app.
+            write_audit_log($conn, $user['user_id'], $user['role'], 'login', 'auth', 'Signed in.');
 
             // Redirect based on role to the correct dashboard
             switch ($user['role']) {
@@ -126,8 +145,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 case 'pharmacist':
                     header("Location: pharmacist/dashboard.php");
                     break;
+                case 'capitol':
+                    // New role (2026-09-20) - see
+                    // 027_capitol_role_and_po_handoff.sql. No dashboard
+                    // page for this portal (it's only ever two things:
+                    // review PRs, manage POs) - land straight on the
+                    // queue itself rather than an extra landing page
+                    // with nothing on it.
+                    header("Location: capitol/purchase-requests.php");
+                    break;
                 case 'staff':
-                    header("Location: staff/check-in.php");
+                    // Three unrelated jobs share the 'staff' role now (see
+                    // 013_staff_subtype.sql and 025_lab_order_queue.sql for
+                    // the newest one) — land each on their own portal's
+                    // actual landing page instead of always sending
+                    // inventory-counting/lab staff to the front-desk
+                    // check-in screen they have no reason to be on.
+                    if ($user['staff_type'] === 'inventory') {
+                        header("Location: staff/dashboard.php");
+                    } elseif ($user['staff_type'] === 'laboratory') {
+                        header("Location: staff/lab-queue.php");
+                    } else {
+                        header("Location: staff/check-in.php");
+                    }
                     break;
                 default:
                     header("Location: index.php");
@@ -235,6 +275,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </button>
                         </div>
                     </div>
+
+                    <p style="text-align: right; margin: -6px 0 18px; font-size: 13px;">
+                        <a href="forgot-password.php" style="color: var(--primary); font-weight: 600; text-decoration: none;">Forgot password?</a>
+                    </p>
 
                     <button type="submit" class="btn-primary" id="submit-btn" <?= $lockout_seconds_remaining > 0 ? 'disabled' : '' ?>>
                         <?= $lockout_seconds_remaining > 0 ? 'Please wait...' : 'Sign In' ?>

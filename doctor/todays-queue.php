@@ -20,9 +20,12 @@ $doctorId        = (int) $_SESSION['user_id'];
 $today = date("F j, Y");
 
 // Today's queue = patients who have actually checked in with front desk
-// today (checked_in_at IS NOT NULL), not just "anyone booked for today".
-// This matches the spec: a patient who never checked in should never
-// appear here, and should eventually become a no-show instead.
+// today (checked_in_at IS NOT NULL) OR who were marked no-show for a
+// today's slot. A no-show appointment always has checked_in_at NULL by
+// definition (see includes/no_show_policy.php's record_no_show(), which
+// only ever marks a row no_show when checked_in_at IS NULL) — so it
+// must be included via its own OR branch, not the checked_in_at check
+// alone, or the No Show chip/filter below could never populate.
 $stmt = $conn->prepare(
     "SELECT a.appointment_id, a.slot_start, a.status, a.is_follow_up, a.checked_in_at,
             u.first_name, u.last_name, u.priority_type,
@@ -32,8 +35,10 @@ $stmt = $conn->prepare(
      JOIN departments d ON d.department_id = a.department_id
      WHERE a.doctor_id = ?
        AND DATE(a.slot_start) = CURDATE()
-       AND a.checked_in_at IS NOT NULL
-     ORDER BY (u.priority_type != 'regular') DESC, a.checked_in_at ASC"
+       AND (a.checked_in_at IS NOT NULL OR a.status = 'no_show')
+     ORDER BY (a.status = 'no_show') ASC,
+              (u.priority_type != 'regular') DESC,
+              COALESCE(a.checked_in_at, a.slot_start) ASC"
 );
 $stmt->bind_param("i", $doctorId);
 $stmt->execute();
@@ -111,7 +116,7 @@ $current_page = 'todays-queue';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Today's Queue - GabayMed</title>
+    <title>Appointment - GabayMed</title>
     <link rel="stylesheet" href="../assets/css/doctor-dashboard.css">
 </head>
 
@@ -126,7 +131,7 @@ $current_page = 'todays-queue';
 
             <header class="page-header">
                 <div>
-                    <h1>Today's Queue</h1>
+                    <h1>Appointment</h1>
                     <p class="page-subtitle">All scheduled patients for <?php echo htmlspecialchars($today); ?>.</p>
                 </div>
 

@@ -4,6 +4,8 @@
 require_once '../includes/auth_guard.php';
 require_role('patient');
 require_once '../config/db.php';
+require_once '../includes/status_labels.php';
+require_active_patient($conn);
 
 $active_page = 'prescriptions';
 
@@ -22,9 +24,9 @@ function formatRxDate($datetime)
 }
 
 /**
- * Turn the consultations.outcome value into a display label for the
- * status pill. This reuses the existing outcome column rather than
- * introducing a new "status" concept that doesn't exist in the schema.
+ * Turn the consultations.outcome value into a display label. Not used for
+ * the table's Status column anymore (see fill_status below), but kept
+ * around in case another page still needs the same outcome vocabulary.
  */
 function formatRxStatus($outcome)
 {
@@ -33,6 +35,40 @@ function formatRxStatus($outcome)
         "confined"   => "Confined",
     ];
     return $map[$outcome] ?? ucfirst(str_replace('_', ' ', $outcome));
+}
+
+/**
+ * Roll up the per-medicine dispense statuses (pending/dispensed/void) for
+ * a prescription group into a single status to show in the table. Applies
+ * equally to outpatient consultation groups and confinement discharge
+ * groups (2026-09-07) - both are just "a group of medicines" from the
+ * patient's point of view. Priority: if ANY medicine is still pending,
+ * the whole group reads as "Pending" (there's still something
+ * actionable). Otherwise, if any medicine was actually dispensed, it
+ * reads as "Dispensed". Only when every medicine was voided does it read
+ * as "Void".
+ */
+function computeFillStatus($medicines)
+{
+    $statuses = array_column($medicines, 'dispense_status');
+
+    if (in_array('pending', $statuses, true)) {
+        return 'pending';
+    }
+    if (in_array('dispensed', $statuses, true)) {
+        return 'dispensed';
+    }
+    return 'void';
+}
+
+function formatFillStatus($fillStatus)
+{
+    $map = [
+        "pending"   => "Pending",
+        "dispensed" => "Dispensed",
+        "void"      => "Void",
+    ];
+    return $map[$fillStatus] ?? ucfirst($fillStatus);
 }
 
 // One row per prescribed medicine, joined back to the consultation it was
@@ -49,7 +85,8 @@ $sql = "SELECT
             p.prescription_id,
             p.medicine_name,
             p.quantity,
-            p.instructions
+            p.instructions,
+            p.status        AS dispense_status
         FROM prescriptions p
         INNER JOIN consultations c ON c.consultation_id = p.consultation_id
         INNER JOIN users u ON u.user_id = p.doctor_id
@@ -62,20 +99,25 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 // Group the flat medicine rows into one entry per consultation, since a
-// single consultation can carry several prescribed medicines.
+// single consultation can carry several prescribed medicines. "source"/
+// "id"/"sort_ts" (2026-09-07) identify this group across the merge with
+// confinement discharge medications below - kept as generic names rather
+// than reusing "consultation_id" for both, since a confinement group has
+// no consultation_id at all.
 $prescriptionGroups = [];
 while ($row = $result->fetch_assoc()) {
     $cid = $row['consultation_id'];
 
     if (!isset($prescriptionGroups[$cid])) {
         $prescriptionGroups[$cid] = [
+            "source"          => "consultation",
+            "id"              => (int) $cid,
             "consultation_id" => $cid,
             "date"            => formatRxDate($row['consultation_date']),
+            "sort_ts"         => strtotime($row['consultation_date']),
             "doctor_name"     => "Dr. " . trim($row['doctor_first_name'] . " " . $row['doctor_last_name']),
             "diagnosis"       => $row['diagnosis'] !== '' ? $row['diagnosis'] : null,
             "notes"           => $row['clinical_notes'],
-            "status"          => formatRxStatus($row['outcome']),
-            "status_raw"      => $row['outcome'],
             "medicines"       => [],
         ];
     }
@@ -84,12 +126,97 @@ while ($row = $result->fetch_assoc()) {
         "name"         => $row['medicine_name'],
         "quantity"     => $row['quantity'],
         "instructions" => $row['instructions'],
+        // Per-medicine fill status (see 022_link_prescriptions_to_dispense.sql
+        // and staff/dispense-stock.php, which is what flips this to
+        // 'dispensed'). Legacy rows created before that migration default
+        // to 'pending' at the DB level even though they can never actually
+        // be dispensed through that screen (no medicine_id link) - shown
+        // as "Pending" here too, since that's still an accurate statement
+        // of what has/hasn't happened to the medicine itself.
+        "dispense_status" => $row['dispense_status'],
     ];
 }
 $stmt->close();
 
-// Insertion order already matches the SQL ORDER BY (newest consultation first).
-$prescriptions = array_values($prescriptionGroups);
+// Discharge ("Medications to Continue") lines, added 2026-09-07 - these
+// live in their own table (confinement_discharge_medications, see
+// 023_confinement_discharge_medications.sql) because they're written by
+// doctor/confinement-discharge-process.php at discharge time, not by the
+// same consultation/prescriptions flow above. Before this, a patient's
+// take-home discharge medicines only ever showed up on the "My
+// Confinement" page's past-confinement history, never here - even though
+// staff/dispense-stock.php already treats them as an equal, dispensable
+// counterpart to a regular prescription. Folding them into this same page
+// (and the same View Details / Print pattern, same fill-status rollup) is
+// that fix.
+$dischargeSql = "SELECT
+            cf.confinement_id,
+            cf.discharge_date,
+            cf.final_diagnosis,
+            cf.discharge_medications AS notes,
+            doc.first_name    AS doctor_first_name,
+            doc.last_name     AS doctor_last_name,
+            cdm.discharge_medication_id,
+            cdm.medicine_name,
+            cdm.quantity,
+            cdm.instructions,
+            cdm.status        AS dispense_status
+        FROM confinement_discharge_medications cdm
+        INNER JOIN confinements cf ON cf.confinement_id = cdm.confinement_id
+        INNER JOIN users doc ON doc.user_id = cf.attending_doctor_id
+        WHERE cf.patient_id = ?
+        ORDER BY cf.discharge_date DESC, cdm.discharge_medication_id ASC";
+
+$stmt = $conn->prepare($dischargeSql);
+$stmt->bind_param("i", $patientId);
+$stmt->execute();
+$result = $stmt->get_result();
+
+$dischargeGroups = [];
+while ($row = $result->fetch_assoc()) {
+    $fid = $row['confinement_id'];
+
+    if (!isset($dischargeGroups[$fid])) {
+        $dischargeGroups[$fid] = [
+            "source"          => "confinement",
+            "id"              => (int) $fid,
+            "confinement_id"  => $fid,
+            "date"            => formatRxDate($row['discharge_date']),
+            "sort_ts"         => strtotime($row['discharge_date']),
+            "doctor_name"     => "Dr. " . trim($row['doctor_first_name'] . " " . $row['doctor_last_name']),
+            "diagnosis"       => $row['final_diagnosis'] !== null && $row['final_diagnosis'] !== '' ? $row['final_diagnosis'] : null,
+            "notes"           => $row['notes'],
+            "medicines"       => [],
+        ];
+    }
+
+    $dischargeGroups[$fid]['medicines'][] = [
+        "name"             => $row['medicine_name'],
+        "quantity"         => $row['quantity'],
+        "instructions"     => $row['instructions'],
+        "dispense_status"  => $row['dispense_status'],
+    ];
+}
+$stmt->close();
+
+// Merge both sources into one list, newest first - a patient looking for
+// "my prescriptions" shouldn't have to know or care which table a
+// particular medicine came from.
+$prescriptions = array_merge(array_values($prescriptionGroups), array_values($dischargeGroups));
+usort($prescriptions, function ($a, $b) {
+    return $b['sort_ts'] <=> $a['sort_ts'];
+});
+
+// Now that each group (from either source) has its full medicine list,
+// roll up a single fill status (pending/dispensed/void) for the table's
+// STATUS column. Applied uniformly across both sources so a discharge
+// group with, say, one dispensed and one still-pending medicine reads
+// exactly the same way an outpatient prescription would.
+foreach ($prescriptions as &$rx) {
+    $rx['fill_status']       = computeFillStatus($rx['medicines']);
+    $rx['fill_status_label'] = formatFillStatus($rx['fill_status']);
+}
+unset($rx);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -136,17 +263,39 @@ $prescriptions = array_values($prescriptionGroups);
                                         <td><?php echo htmlspecialchars($rx['doctor_name']); ?></td>
                                         <td><?php echo $rx['diagnosis'] !== null ? htmlspecialchars($rx['diagnosis']) : '<span class="rx-muted">Not available</span>'; ?></td>
                                         <td>
-                                            <span class="status-chip status-chip-<?php echo htmlspecialchars($rx['status_raw']); ?>">
-                                                <?php echo htmlspecialchars($rx['status']); ?>
+                                            <span class="status-chip status-chip-<?php echo htmlspecialchars($rx['fill_status']); ?>">
+                                                <?php echo htmlspecialchars($rx['fill_status_label']); ?>
                                             </span>
                                         </td>
                                         <td>
                                             <button
                                                 type="button"
                                                 class="btn-view-rx"
-                                                data-consultation-id="<?php echo (int) $rx['consultation_id']; ?>">
+                                                data-source="<?php echo htmlspecialchars($rx['source']); ?>"
+                                                data-id="<?php echo (int) $rx['id']; ?>">
                                                 View Details
                                             </button>
+                                            <?php if ($rx['source'] === 'confinement'): ?>
+                                                <?php if (!empty($rx['medicines'])): ?>
+                                                    <a
+                                                        href="print-pharmacy-slip.php?confinement_id=<?php echo (int) $rx['id']; ?>"
+                                                        target="_blank"
+                                                        class="btn-view-rx"
+                                                        style="margin-left: 8px; display: inline-block; text-decoration: none;">
+                                                        Print Pharmacy Slip
+                                                    </a>
+                                                <?php endif; ?>
+                                            <?php else: ?>
+                                                <?php if (!empty($rx['medicines'])): ?>
+                                                    <a
+                                                        href="print-pharmacy-slip.php?consultation_id=<?php echo (int) $rx['id']; ?>"
+                                                        target="_blank"
+                                                        class="btn-view-rx"
+                                                        style="margin-left: 8px; display: inline-block; text-decoration: none;">
+                                                        Print Pharmacy Slip
+                                                    </a>
+                                                <?php endif; ?>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -256,6 +405,11 @@ $prescriptions = array_values($prescriptionGroups);
     <!-- Prescription data for this patient only, already scoped server-side -->
     <script>
         var prescriptionsData = <?php echo json_encode($prescriptions, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+        // Single source of truth for these labels is includes/status_labels.php
+        // (get_rx_status_labels()) - embedded here rather than hardcoded in
+        // prescriptions.js, so the PHP side can't drift from the JS side. See
+        // that file's own header comment for the other half of this.
+        var rxStatusLabels = <?php echo json_encode(get_rx_status_labels(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     </script>
     <script src="../assets/js/prescriptions.js"></script>
 </body>

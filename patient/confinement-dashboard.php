@@ -30,9 +30,10 @@ $currently_confined = ($status === 'confined');
 // out of the active banner, but doesn't forbid showing them in their
 // own history view — this nav entry is a reasonable place for that).
 $past_confinements = [];
+$discharge_medications_by_confinement = []; // confinement_id => [ {name, quantity, instructions, status}, ... ]
 if (!$currently_confined) {
     $stmt = $conn->prepare("
-        SELECT c.date_confined, c.discharge_status, c.discharge_date, c.room_location,
+        SELECT c.confinement_id, c.date_confined, c.discharge_status, c.discharge_date, c.room_location,
                doc.first_name AS doctor_first, doc.last_name AS doctor_last
         FROM confinements c
         JOIN users doc ON c.attending_doctor_id = doc.user_id
@@ -43,6 +44,28 @@ if (!$currently_confined) {
     $stmt->execute();
     $past_confinements = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $stmt->close();
+
+    // Itemized "Medications to Continue" for each past confinement (see
+    // 023_confinement_discharge_medications.sql) - fetched in one query
+    // for all of them and grouped in PHP, same idea as
+    // staff/dispense-stock.php's $prescriptionGroups grouping.
+    if (!empty($past_confinements)) {
+        $confinementIds = array_column($past_confinements, 'confinement_id');
+        $placeholders = implode(',', array_fill(0, count($confinementIds), '?'));
+        $types = str_repeat('i', count($confinementIds));
+        $stmt = $conn->prepare(
+            "SELECT confinement_id, medicine_name, quantity, instructions, status
+             FROM confinement_discharge_medications
+             WHERE confinement_id IN ($placeholders)
+             ORDER BY discharge_medication_id ASC"
+        );
+        $stmt->bind_param($types, ...$confinementIds);
+        $stmt->execute();
+        foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $medRow) {
+            $discharge_medications_by_confinement[(int) $medRow['confinement_id']][] = $medRow;
+        }
+        $stmt->close();
+    }
 }
 
 // Spec edge case: show only the CURRENT ongoing confinement (discharge_status IS NULL).
@@ -116,6 +139,7 @@ function get_discharge_label($discharge_status)
     <title>Confinement - GabayMed</title>
     <link rel="stylesheet" href="../assets/css/dashboard.css">
     <link rel="stylesheet" href="../assets/css/confinement.css">
+    <link rel="stylesheet" href="../assets/css/prescriptions.css">
     <style>
         /* TODO: move into confinement.css once merged there */
         .confinement-blocked-note {
@@ -211,6 +235,30 @@ function get_discharge_label($discharge_status)
                                         &middot; <?= htmlspecialchars($past['room_location']) ?>
                                     <?php endif; ?>
                                 </div>
+                                <?php $meds = $discharge_medications_by_confinement[(int) $past['confinement_id']] ?? []; ?>
+                                <?php if (!empty($meds)): ?>
+                                    <div class="timeline-medications">
+                                        <div class="timeline-medications-title">Medications to Continue</div>
+                                        <?php foreach ($meds as $med): ?>
+                                            <div class="timeline-medication-row">
+                                                <span class="timeline-medication-name"><?= htmlspecialchars($med['medicine_name']) ?></span>
+                                                <?php if (!empty($med['quantity'])): ?>
+                                                    <span class="timeline-medication-qty"><?= htmlspecialchars($med['quantity']) ?></span>
+                                                <?php endif; ?>
+                                                <span class="rx-chip rx-chip-<?= htmlspecialchars($med['status']) ?>">
+                                                    <?= htmlspecialchars(ucfirst($med['status'])) ?>
+                                                </span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                        <a
+                                            href="print-pharmacy-slip.php?confinement_id=<?= (int) $past['confinement_id'] ?>"
+                                            target="_blank"
+                                            class="btn-view-rx"
+                                            style="margin-top: 10px; display: inline-block; text-decoration: none;">
+                                            Print Pharmacy Slip
+                                        </a>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
                     </div>

@@ -1,0 +1,118 @@
+/* Staff My Info page. */
+
+.mi-profile-hero {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding: 22px 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.mi-avatar {
+    width: 58px;
+    height: 58px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--teal);
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.mi-profile-hero h2 {
+    margin: 0 0 4px;
+    color: var(--text-primary);
+    font-size: 20px;
+}
+
+.mi-profile-hero p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.mi-profile-hero .status-pill {
+    margin-left: auto;
+}
+
+.mi-status-active {
+    background: var(--teal-light);
+    color: var(--teal-dark);
+}
+
+.mi-status-pending {
+    background: var(--amber-light);
+    color: var(--amber);
+}
+
+.mi-status-deactivated,
+.mi-status-blocked,
+.mi-status-deceased {
+    background: var(--red-light);
+    color: var(--red);
+}
+
+.mi-status-confined {
+    background: var(--blue-light);
+    color: var(--blue);
+}
+
+.mi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+}
+
+.mi-card .card-header {
+    margin-bottom: 18px;
+}
+
+.mi-details {
+    display: grid;
+    gap: 16px;
+    margin: 0;
+}
+
+.mi-details div {
+    display: grid;
+    gap: 5px;
+}
+
+.mi-details dt {
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.mi-details dd {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 14px;
+    word-break: break-word;
+}
+
+@media (max-width: 640px) {
+    .mi-profile-hero {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        padding: 18px;
+    }
+
+    .mi-profile-hero .status-pill {
+        width: 100%;
+        margin-left: 74px;
+    }
+
+    .mi-grid {
+        grid-template-columns: 1fr;
+    }
+}

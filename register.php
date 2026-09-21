@@ -3,14 +3,44 @@
 // Public registration page — PATIENTS ONLY.
 // Doctors and Admins/Pharmacists are created later by an Admin from inside the system.
 
+// Needed for CSRF (added 2026-08-08, see below) - this page never called
+// it before since it's otherwise a no-login page with nothing else to
+// track in a session. Must run before any HTML output, same requirement
+// as includes/auth_guard.php's own session_start(). Without this, the
+// token embedded in the form on page load and the token read back on
+// submission belong to two disconnected, non-persisted sessions, so
+// EVERY submission - not just forged ones - would fail csrf_token()'s
+// check, since $_SESSION['csrf_token'] would be empty again on each
+// request.
+session_start();
+
 require_once 'config/db.php';
+require_once 'includes/csrf.php';
 
 $errors = [];
 $success = false;
 $linked_existing_record = false;
 
+if (!empty($_SESSION['csrf_flash'])) {
+    $errors[] = $_SESSION['csrf_flash']['message'];
+    unset($_SESSION['csrf_flash']);
+}
+
 // This block only runs when the form is submitted (POST request)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    // CSRF (settled 2026-08-08): registration was missing this entirely,
+    // despite includes/csrf.php's own doc comment saying it's "checked on
+    // every state-changing POST" - creating a new users row is
+    // unambiguously that. Not a classic session-riding CSRF (registration
+    // needs no prior session to exploit), but a real, narrower risk
+    // remains: a hidden auto-submitting form on another site could
+    // silently register an account under a VICTIM's real phone number
+    // with a password the attacker chose, before the real owner ever
+    // gets to register with their own number. Redirects back to this
+    // same page rather than a generic error page, matching how the rest
+    // of this form already re-renders with $errors on any failure.
+    require_csrf('register.php');
 
     // Step 1: Collect and clean up the submitted values
     // trim() removes accidental leading/trailing spaces
@@ -139,6 +169,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sex_value        = $sex !== '' ? $sex : null;
         $address_value    = $address !== '' ? $address : null;
 
+        // Both branches below are wrapped in try/catch for the same reason
+        // as patient/profile.php's update handler: this environment's
+        // mysqli throws mysqli_sql_exception on a duplicate-key violation
+        // (PHP 8.1+ default, no mysqli_report() override in config/db.php)
+        // rather than having execute() return false - the plain if/else
+        // below was written as if the latter were still true. The
+        // pre-checks above (phone_number, email) don't fully close this:
+        // two submissions racing each other - including something as
+        // ordinary as double-clicking "Create Account", not just a
+        // contrived attack - can both pass the pre-check before either
+        // INSERT/UPDATE actually lands, especially here where
+        // password_hash()'s deliberate ~100-300ms BCRYPT cost widens that
+        // window more than a typical fast query would.
         if ($existing_guest_id !== null) {
             // Link to the existing hospital record instead of creating a
             // duplicate patient. First/last name are left untouched since
@@ -147,66 +190,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // empty on the existing record get filled in from this form.
             // The re-check on account_status = 'guest' guards against a
             // race where the same guest activates twice at once.
-            $stmt = $conn->prepare("
-                UPDATE users
-                SET password = ?,
-                    email = COALESCE(email, ?),
-                    birthdate = COALESCE(birthdate, ?),
-                    philhealth_id = COALESCE(philhealth_id, ?),
-                    sex = COALESCE(sex, ?),
-                    address = COALESCE(address, ?),
-                    priority_type = ?,
-                    account_status = 'active'
-                WHERE user_id = ? AND account_status = 'guest'
-            ");
-            $stmt->bind_param(
-                "sssssssi",
-                $hashed_password,
-                $email_value,
-                $birthdate_value,
-                $philhealth_value,
-                $sex_value,
-                $address_value,
-                $priority_type,
-                $existing_guest_id
-            );
-            $stmt->execute();
-            $linked = $stmt->affected_rows === 1;
-            $stmt->close();
+            try {
+                $stmt = $conn->prepare("
+                    UPDATE users
+                    SET password = ?,
+                        email = COALESCE(email, ?),
+                        birthdate = COALESCE(birthdate, ?),
+                        philhealth_id = COALESCE(philhealth_id, ?),
+                        sex = COALESCE(sex, ?),
+                        address = COALESCE(address, ?),
+                        priority_type = ?,
+                        account_status = 'active'
+                    WHERE user_id = ? AND account_status = 'guest'
+                ");
+                $stmt->bind_param(
+                    "sssssssi",
+                    $hashed_password,
+                    $email_value,
+                    $birthdate_value,
+                    $philhealth_value,
+                    $sex_value,
+                    $address_value,
+                    $priority_type,
+                    $existing_guest_id
+                );
+                $stmt->execute();
+                $linked = $stmt->affected_rows === 1;
+                $stmt->close();
 
-            if ($linked) {
-                $success = true;
-                $linked_existing_record = true;
-            } else {
-                $errors[] = "That hospital record was just updated elsewhere. Please try again.";
+                if ($linked) {
+                    $success = true;
+                    $linked_existing_record = true;
+                } else {
+                    $errors[] = "That hospital record was just updated elsewhere. Please try again.";
+                }
+            } catch (mysqli_sql_exception $e) {
+                if ($e->getCode() === 1062) {
+                    $errors[] = "An account with that email already exists.";
+                } else {
+                    $errors[] = "Something went wrong while creating your account. Please try again.";
+                }
             }
         } else {
-            $stmt = $conn->prepare("
-                INSERT INTO users
-                    (role, phone_number, password, email, first_name, last_name, birthdate, philhealth_id, sex, address, priority_type)
-                VALUES
-                    ('patient', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->bind_param(
-                "ssssssssss",
-                $phone_number,
-                $hashed_password,
-                $email_value,
-                $first_name,
-                $last_name,
-                $birthdate_value,
-                $philhealth_value,
-                $sex_value,
-                $address_value,
-                $priority_type
-            );
+            try {
+                $stmt = $conn->prepare("
+                    INSERT INTO users
+                        (role, phone_number, password, email, first_name, last_name, birthdate, philhealth_id, sex, address, priority_type)
+                    VALUES
+                        ('patient', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->bind_param(
+                    "ssssssssss",
+                    $phone_number,
+                    $hashed_password,
+                    $email_value,
+                    $first_name,
+                    $last_name,
+                    $birthdate_value,
+                    $philhealth_value,
+                    $sex_value,
+                    $address_value,
+                    $priority_type
+                );
 
-            if ($stmt->execute()) {
-                $success = true;
-            } else {
-                $errors[] = "Something went wrong while creating your account. Please try again.";
+                if ($stmt->execute()) {
+                    $success = true;
+                } else {
+                    $errors[] = "Something went wrong while creating your account. Please try again.";
+                }
+                $stmt->close();
+            } catch (mysqli_sql_exception $e) {
+                if ($e->getCode() === 1062) {
+                    $dupField = (strpos($e->getMessage(), 'email') !== false) ? 'email address' : 'mobile number';
+                    $errors[] = "An account with that {$dupField} already exists.";
+                } else {
+                    $errors[] = "Something went wrong while creating your account. Please try again.";
+                }
             }
-            $stmt->close();
         }
     }
 }
@@ -291,6 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <?php endif; ?>
 
                     <form method="POST" action="register.php">
+                        <?= csrf_field() ?>
 
                         <div class="form-row">
                             <div class="form-group">

@@ -77,3 +77,44 @@
   color: var(--text-dark);
   line-height: 1.5;
 }
+
+/* Itemized "Medications to Continue" nested under a past confinement's
+   timeline entry - see patient/confinement-dashboard.php. Status badges
+   (.rx-chip-*) are shared with prescriptions.css rather than redefined
+   here. */
+.timeline-medications {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg-subtle, #F7F8F6);
+  border-radius: 8px;
+}
+
+.timeline-medications-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.timeline-medication-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.timeline-medication-name {
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.timeline-medication-qty {
+  color: var(--text-muted);
+}
+
+.timeline-medication-row .rx-chip {
+  margin-left: auto;
+}

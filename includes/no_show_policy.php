@@ -20,22 +20,27 @@
 // own for any manual "Mark No-Show" action a doctor/staff member might
 // trigger directly.
 
-define('NO_SHOW_GRACE_MINUTES', 30);
-define('NO_SHOW_STRIKE_LIMIT', 3);
+// FORMERLY hardcoded constants — now admin-editable via
+// admin/system-settings.php (system_settings table, category
+// 'no_show'). Kept as fallback defaults here so behavior is unchanged
+// if the settings table/rows are ever missing.
+require_once __DIR__ . '/system_settings.php';
 
 /**
- * Returns true if an appointment is old enough (30+ min past slot_start)
- * and still unresolved (pending/confirmed) to be ELIGIBLE for a doctor/staff
- * member to mark it as a no-show. This does not mark anything itself —
- * it's a guard so the "Mark No-Show" action can't be used prematurely.
+ * Returns true if an appointment is old enough (no_show_grace_minutes+
+ * past slot_start, admin-configurable) and still unresolved
+ * (pending/confirmed) to be ELIGIBLE for a doctor/staff member to mark
+ * it as a no-show. This does not mark anything itself — it's a guard so
+ * the "Mark No-Show" action can't be used prematurely.
  */
-function is_eligible_for_no_show($appointment_status, $slot_start)
+function is_eligible_for_no_show(mysqli $conn, $appointment_status, $slot_start)
 {
     if (!in_array($appointment_status, ['pending', 'confirmed'])) {
         return false; // already resolved one way or another
     }
+    $graceMinutes = get_setting_int($conn, 'no_show_grace_minutes', 30);
     $minutes_elapsed = (time() - strtotime($slot_start)) / 60;
-    return $minutes_elapsed >= NO_SHOW_GRACE_MINUTES;
+    return $minutes_elapsed >= $graceMinutes;
 }
 
 /**
@@ -90,8 +95,10 @@ function record_no_show($conn, $appointment_id, $patient_id)
     $new_count = $stmt->get_result()->fetch_assoc()['no_show_count'];
     $stmt->close();
 
+    $strikeLimit = get_setting_int($conn, 'no_show_strike_limit', 3);
+
     $just_blocked = false;
-    if ($new_count >= NO_SHOW_STRIKE_LIMIT) {
+    if ($new_count >= $strikeLimit) {
         $stmt = $conn->prepare("UPDATE users SET status = 'blocked' WHERE user_id = ?");
         $stmt->bind_param("i", $patient_id);
         $stmt->execute();
@@ -105,14 +112,14 @@ function record_no_show($conn, $appointment_id, $patient_id)
         create_notification(
             $conn,
             $patient_id,
-            "Your account has been blocked after 3 missed appointments. Please visit the front desk to reactivate it.",
+            "Your account has been blocked after $strikeLimit missed appointments. Please visit the front desk to reactivate it.",
             'blocked.php'
         );
     } else {
         create_notification(
             $conn,
             $patient_id,
-            "You missed your appointment and it has been marked as a no-show ($new_count of " . NO_SHOW_STRIKE_LIMIT . ").",
+            "You missed your appointment and it has been marked as a no-show ($new_count of $strikeLimit).",
             'dashboard.php'
         );
     }
@@ -136,7 +143,7 @@ function record_no_show($conn, $appointment_id, $patient_id)
  */
 function run_no_show_sweep($conn)
 {
-    $graceMinutes = NO_SHOW_GRACE_MINUTES;
+    $graceMinutes = get_setting_int($conn, 'no_show_grace_minutes', 30);
     $stmt = $conn->prepare(
         "SELECT appointment_id, patient_id, status, slot_start
          FROM appointments
@@ -154,7 +161,7 @@ function run_no_show_sweep($conn)
         // Defensive re-check with the same rule the SQL above already
         // applied, so this stays the single source of truth for what
         // "eligible" means rather than duplicating the 30-minute logic.
-        if (!is_eligible_for_no_show($appointment['status'], $appointment['slot_start'])) {
+        if (!is_eligible_for_no_show($conn, $appointment['status'], $appointment['slot_start'])) {
             continue;
         }
 

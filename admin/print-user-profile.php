@@ -1,22 +1,33 @@
 <?php
 // admin/print-user-profile.php
-// PDF-style User Profile print preview — UI ONLY. Same pattern as
+// PDF-style User Profile print preview. Same pattern as
 // print-purchase-order.php / doctor/print-consultation.php: a bare,
 // self-contained HTML page meant to be opened in a new tab and printed
 // (or saved as PDF via the browser print dialog), not styled like the
-// app shell. Data comes from the same placeholder set the User
-// Management table uses, via includes/user-management-data.php.
+// app shell.
 //
-// TODO(backend): once the users API exists, replace um_find_user() below
-// with a real SELECT ... FROM users WHERE user_id = ? lookup, the same
-// way print-purchase-order.php pulls its record with a prepared statement.
+// REAL (2026-08-03): now calls um_fetch_user(), the real DB lookup that
+// was already built in includes/user-management-data.php specifically
+// for this page (see that function's own docblock) but never wired in.
+//
+// Two fields this page used to show have NO real equivalent and were
+// dropped rather than faked:
+//   - "Username": there is no username column at all. Login is by
+//     phone_number (see login.php) - already shown as its own field
+//     above, so it wasn't duplicated here.
+//   - "Last Login": not tracked anywhere in the schema.
+// Everything else (sex, birthdate, address, email) is genuinely nullable
+// in the real data - most non-patient users (doctor/admin/staff seed
+// rows) have ALL of these NULL - so each is guarded with a fallback
+// instead of feeding strtotime(null)/htmlspecialchars(null).
 
 require_once '../includes/auth_guard.php';
 require_role('admin');
+require_once '../config/db.php';
 require_once 'includes/user-management-data.php';
 
 $userId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : 0;
-$user = $userId > 0 ? um_find_user($placeholderUsers, $userId) : null;
+$user = $userId > 0 ? um_fetch_user($conn, $userId) : null;
 
 if (!$user) {
     http_response_code(404);
@@ -276,22 +287,22 @@ if (!$user) {
         <div class="profile-avatar"><?php echo htmlspecialchars($user['initials']); ?></div>
         <div>
             <h2><?php echo htmlspecialchars($user['full_name']); ?></h2>
-            <p><?php echo htmlspecialchars($user['role_label']); ?> · <?php echo htmlspecialchars($user['department']); ?></p>
+            <p><?php echo htmlspecialchars($user['role_label']); ?> · <?php echo htmlspecialchars($user['department_name']); ?></p>
         </div>
     </div>
 
     <div class="profile-grid">
         <div class="profile-item">
             <div class="profile-item-label">Email</div>
-            <div class="profile-item-value"><?php echo htmlspecialchars($user['email']); ?></div>
+            <div class="profile-item-value"><?php echo htmlspecialchars($user['email'] ?? 'Not on file'); ?></div>
         </div>
         <div class="profile-item">
             <div class="profile-item-label">Phone</div>
-            <div class="profile-item-value"><?php echo htmlspecialchars($user['phone']); ?></div>
+            <div class="profile-item-value"><?php echo htmlspecialchars($user['phone'] ?? 'Not on file'); ?></div>
         </div>
         <div class="profile-item">
             <div class="profile-item-label">Department</div>
-            <div class="profile-item-value"><?php echo htmlspecialchars($user['department']); ?></div>
+            <div class="profile-item-value"><?php echo htmlspecialchars($user['department_name']); ?></div>
         </div>
         <div class="profile-item">
             <div class="profile-item-label">Status</div>
@@ -301,30 +312,22 @@ if (!$user) {
             <div class="profile-item-label">Date Registered</div>
             <div class="profile-item-value"><?php echo htmlspecialchars(date('F j, Y', strtotime($user['date_registered']))); ?></div>
         </div>
-        <div class="profile-item">
-            <div class="profile-item-label">Last Login</div>
-            <div class="profile-item-value"><?php echo htmlspecialchars($user['last_login']); ?></div>
-        </div>
     </div>
 
     <div class="profile-section-title">Personal &amp; Account Details</div>
     <table class="profile-table">
         <tbody>
             <tr>
-                <th>Username</th>
-                <td><?php echo htmlspecialchars($user['username']); ?></td>
-            </tr>
-            <tr>
-                <th>Gender</th>
-                <td><?php echo htmlspecialchars($user['gender']); ?></td>
+                <th>Sex</th>
+                <td><?php echo htmlspecialchars($user['sex'] !== null ? ucfirst($user['sex']) : 'Not on file'); ?></td>
             </tr>
             <tr>
                 <th>Birthdate</th>
-                <td><?php echo htmlspecialchars(date('F j, Y', strtotime($user['birthdate']))); ?></td>
+                <td><?php echo htmlspecialchars($user['birthdate'] !== null ? date('F j, Y', strtotime($user['birthdate'])) : 'Not on file'); ?></td>
             </tr>
             <tr>
                 <th>Address</th>
-                <td><?php echo htmlspecialchars($user['address']); ?></td>
+                <td><?php echo htmlspecialchars($user['address'] ?? 'Not on file'); ?></td>
             </tr>
         </tbody>
     </table>

@@ -7,6 +7,17 @@
   overflow: hidden;
 }
 
+/* The table sits directly inside .card.no-padding with nothing to scroll
+   it - same missing-wrapper issue as .rx-table in prescriptions.css. On
+   narrow screens the 5 columns (Reference, Date, Department, Doctor,
+   Status) got squeezed instead of scrolling. .no-padding's overflow:
+   hidden still clips this wrapper's rounded corners to the card as
+   before; the wrapper itself handles horizontal scrolling internally. */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .history-table {
   width: 100%;
   border-collapse: collapse;
@@ -85,6 +96,24 @@
 .outcome-box p {
   font-size: 14px;
   color: var(--text-dark);
+}
+
+/* Prescriptions/Lab Orders lists in the detail modal (2026-09-18) - each
+   .outcome-box already gives the section its own top border + spacing;
+   this just styles the list itself to match .outcome-box p's font. */
+.history-detail-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--text-dark);
+}
+
+.history-detail-list li {
+  margin-bottom: 6px;
+}
+
+.history-detail-list li:last-child {
+  margin-bottom: 0;
 }
 
 /* ===== Appointment Detail Modal ===== */
@@ -205,6 +234,10 @@ body.modal-open {
 @media (max-width: 700px) {
   .history-table {
     font-size: 12.5px;
+    /* Floor width so columns keep readable proportions and the row
+       scrolls horizontally (via .table-wrap above) instead of squeezing
+       every cell down to fit the phone's viewport. */
+    min-width: 560px;
   }
   .history-table thead th,
   .history-table td {

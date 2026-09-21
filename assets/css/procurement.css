@@ -1,0 +1,443 @@
+/* assets/css/procurement.css
+   Shared styles for the Pharmacist portal's Purchase Requests, Purchase
+   Orders, and Receiving pages. Layers on top of doctor-dashboard.css +
+   pharmacist-dashboard.css, same pattern as inventory-count.css. */
+
+.po-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+}
+
+.po-breadcrumb {
+    display: inline-block;
+    margin-bottom: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+
+.po-breadcrumb:hover {
+    color: var(--teal-dark);
+}
+
+@media (max-width: 640px) {
+    .po-page-header {
+        flex-direction: column;
+    }
+}
+
+.po-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+}
+
+.po-status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: capitalize;
+    letter-spacing: 0.02em;
+}
+
+.po-status-badge.open {
+    background: #e0f2fe;
+    color: #075985;
+}
+
+.po-status-badge.approved {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.po-status-badge.rejected {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.po-status-badge.sent_to_capitol {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.po-status-badge.converted {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
+.po-status-badge.received {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.po-status-badge.cancelled {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.pr-status-note {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-muted, #64748b);
+    max-width: 220px;
+}
+
+.pr-status-note-warn {
+    color: #991b1b;
+}
+
+.po-empty {
+    padding: 24px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+/* Line-item entry: collapsible rows instead of a wide table. Each row
+   shows only the fields you need to scan (name, category, unit, qty)
+   collapsed; brand/strength/units-per-box/funding-source/notes expand
+   on click, so a 40+ item import doesn't turn into 40+ rows of
+   horizontal scroll. */
+.po-item-rows {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-top: 12px;
+    overflow: hidden;
+}
+
+.po-item-row {
+    border-bottom: 1px solid var(--border);
+}
+
+.po-item-row:last-child {
+    border-bottom: none;
+}
+
+.po-item-row-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+}
+
+.po-row-chevron {
+    flex: none;
+    display: flex;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+}
+
+.po-item-row.open .po-row-chevron {
+    transform: rotate(90deg);
+}
+
+.po-item-row-head .f-name {
+    flex: 1 1 auto;
+    min-width: 120px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 7px 9px;
+    font: inherit;
+    font-size: 13px;
+}
+
+.po-item-row-head .f-category,
+.po-item-row-head .f-unit {
+    flex: none;
+    width: 130px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 7px 9px;
+    font: inherit;
+    font-size: 12.5px;
+}
+
+.po-item-row-head .f-qty {
+    flex: none;
+    width: 80px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 7px 9px;
+    font: inherit;
+    font-size: 12.5px;
+    text-align: right;
+}
+
+.po-remove-row {
+    flex: none;
+    background: none;
+    border: none;
+    color: var(--red, #ef4444);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+}
+
+.po-item-row-detail {
+    display: none;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 0 12px 14px 38px;
+}
+
+.po-item-row.open .po-item-row-detail {
+    display: grid;
+}
+
+.po-item-row-detail > div:last-child {
+    grid-column: span 2;
+}
+
+.po-item-row-detail label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.po-item-row-detail input,
+.po-item-row-detail select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12.5px;
+}
+
+@media (max-width: 640px) {
+    .po-item-row-detail {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Add manually / Import from file tabs */
+.po-tabs {
+    display: flex;
+    gap: 22px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+}
+
+.po-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 2px;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.po-tab.active {
+    color: var(--teal-dark, #0f766e);
+    border-bottom-color: var(--teal-dark, #0f766e);
+}
+
+.po-tab-panel {
+    display: none;
+}
+
+.po-tab-panel.active {
+    display: block;
+}
+
+/* Drag-and-drop import zone */
+.po-dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1.5px dashed var(--border);
+    border-radius: 12px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.po-dropzone.dragover {
+    background: #e0f2fe;
+    border-color: var(--teal-dark, #0f766e);
+}
+
+.po-dropzone svg {
+    color: var(--text-muted);
+}
+
+.po-dropzone-title {
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+.po-dropzone-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.po-dropzone input[type="file"] {
+    display: none;
+}
+
+.po-template-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+}
+
+.po-variance {
+    font-weight: 700;
+}
+
+.po-variance.short {
+    color: #b91c1c;
+}
+
+.po-variance.excess {
+    color: #b45309;
+}
+
+.po-variance.match {
+    color: #166534;
+}
+
+/* FIXED 2026-09-21: .po-item-grid (the Receiving Sheet table on
+   pharmacist/po-receiving.php) had NO styling anywhere - confirmed by
+   grepping every stylesheet that page loads and finding zero matches.
+   It was rendering as a bare, unstyled HTML table (default browser
+   table/input chrome), which is what made it look "broken" - uneven
+   header casing/spacing, cramped inputs with no borders, nothing
+   matching the rest of this app's tables. This is the same header/cell
+   convention .data-table already uses elsewhere (see this file's own
+   sibling stylesheet, pharmacist-dashboard.css), plus input styling
+   matching .po-field's inputs just above, sized down for a much denser,
+   9-column grid. */
+.po-item-grid-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.po-item-grid {
+    width: 100%;
+    min-width: 920px;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.po-item-grid thead th {
+    padding: 11px 12px;
+    background: var(--bg-light, #f8fafc);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.po-item-grid tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.po-item-grid tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.po-item-grid tbody tr:hover {
+    background: #fafbfc;
+}
+
+.po-item-grid input[type="text"],
+.po-item-grid input[type="number"],
+.po-item-grid input[type="date"] {
+    width: 100%;
+    min-width: 90px;
+    box-sizing: border-box;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 12.5px;
+}
+
+.po-item-grid input[readonly] {
+    background: var(--bg-light, #f8fafc);
+    color: var(--text-muted);
+    border-color: transparent;
+}
+
+.po-review-banner {
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-top: 12px;
+}
+
+.po-review-banner.info {
+    background: #e0f2fe;
+    color: #075985;
+}
+
+.po-review-banner.warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.po-field-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+    .po-field-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.po-field label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: var(--text-secondary);
+}
+
+.po-field input,
+.po-field select,
+.po-field textarea {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+}
+
+.po-source-select {
+    max-width: 260px;
+}

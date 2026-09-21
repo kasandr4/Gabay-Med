@@ -91,3 +91,52 @@ function verify_appointment_reference($reference, $appointment_id, $created_at)
 {
     return trim($reference) === format_appointment_reference($appointment_id, $created_at);
 }
+
+// CONFINEMENT REFERENCES (2026-09-05): confinements aren't appointments —
+// no appointment_id, no visit slot — so they need their own reference
+// scheme rather than reusing format_appointment_reference(). Same HMAC
+// approach, same secret, but prefixed "GMC-" (GabayMed Confinement)
+// instead of "GM-" so the two are visually distinct and, more
+// importantly, so staff/dispense-stock.php's lookup can tell which kind
+// of reference was typed in before it knows which table to query.
+// "GMC-" can never be mistaken for a valid "GM-..." appointment reference
+// or vice versa: parse_appointment_reference() requires "GM-" followed
+// immediately by 4 digits, which "GMC-" (a C in that position) never
+// satisfies, and the reverse holds for parse_confinement_reference() below.
+//
+// Format: GMC-YYYY-NNNNNN-SSSS
+//   YYYY   = year the confinement record was CREATED
+//   NNNNNN = confinement_id, zero-padded to 6 digits
+//   SSSS   = 4-char signature over "GMC-YYYY-NNNNNN", same reasoning as
+//            the appointment version above.
+function format_confinement_reference($confinement_id, $created_at)
+{
+    $year = date('Y', strtotime($created_at));
+    $padded_id = str_pad($confinement_id, 6, '0', STR_PAD_LEFT);
+    $base = "GMC-{$year}-{$padded_id}";
+    return "{$base}-" . reference_signature($base);
+}
+
+function parse_confinement_reference($reference)
+{
+    $reference = trim($reference);
+
+    if (!preg_match('/^(GMC-\d{4}-(\d{6}))-([A-F0-9]{4})$/', $reference, $matches)) {
+        return null;
+    }
+
+    $base = $matches[1];
+    $confinement_id = (int) $matches[2];
+    $submitted_signature = $matches[3];
+
+    if (!hash_equals(reference_signature($base), $submitted_signature)) {
+        return null;
+    }
+
+    return $confinement_id;
+}
+
+function verify_confinement_reference($reference, $confinement_id, $created_at)
+{
+    return trim($reference) === format_confinement_reference($confinement_id, $created_at);
+}

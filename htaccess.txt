@@ -1,0 +1,8 @@
+# Block direct web access to files that must never be served.
+# (.env holds the reference-number secret and SMTP credentials.)
+<FilesMatch "^\.(env|git|gitignore|agents)|\.(sql|vsix|md|log)$|^generate_hash\.php$">
+    Require all denied
+</FilesMatch>
+
+# .git / .agents are directories, so match them by path.
+RedirectMatch 404 /\.(git|agents)(/|$)

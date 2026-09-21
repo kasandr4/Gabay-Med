@@ -1,107 +1,90 @@
 <?php
 // admin/hospital-census.php
-// Module 2 — Hospital Census (UI ONLY, read-only).
+// Module 2 — Hospital Census (read-only).
 //
-// Per the brief: no backend logic, no SQL beyond the existing auth guard.
-// $confinedPatients below stands in for a future query against
-// `confinements` JOIN `users` JOIN `users` (attending doctor) — see the
-// TODO(backend) comment on the array. Every field name deliberately
-// matches the real `confinements`/`users` columns (room_location,
-// clinical_status, etc.) so wiring this up later is a drop-in swap, not a
-// redesign.
+// REAL BACKEND (2026-07-22): confirmed patients now come from
+// confinements JOIN users (patient) JOIN users (attending doctor) LEFT
+// JOIN departments (doctor's department stands in for the patient's
+// ward/department, same assumption doctor/dashboard.php already makes
+// for its own specialty lookup).
 //
-// This page is intentionally read-only: no discharge button, no edit
-// button, anywhere — matching the spec. That action lives in the Doctor
-// Portal's Confinement module, not here.
+// "Diagnosis" -> renamed to "Admission Note" in the drawer below.
+// confinements has no diagnosis column and no link back to the admitting
+// consultation, so there's no reliable way to pull a real diagnosis
+// without guessing which past consultation it was. What IS real and
+// reliably linked is confinement_notes (via confinement_id) - the
+// earliest note for a confinement is the admission note written by
+// confine-patient-process.php at admit time, so that's what's shown
+// instead. "Timeline" is now the real, full confinement_notes history
+// for that confinement, oldest first.
 
 require_once '../includes/auth_guard.php';
+require_once '../config/db.php'; // provides $conn (mysqli connection)
 require_role('admin');
+require_once '../includes/patient_classification.php';
 
 $today = date("F j, Y");
 
-// TODO(backend): replace with
-//   SELECT c.confinement_id, p.first_name, p.last_name, p.user_id AS patient_id,
-//          d.first_name AS doc_first, d.last_name AS doc_last,
-//          c.date_confined, c.room_location, c.clinical_status
-//   FROM confinements c
-//   JOIN users p ON p.user_id = c.patient_id
-//   JOIN users d ON d.user_id = c.attending_doctor_id
-//   WHERE c.discharge_status IS NULL
-//   ORDER BY c.date_confined ASC
-// "days_confined" would be DATEDIFF(CURDATE(), c.date_confined) in SQL;
-// computed here in PHP from the placeholder date instead.
-// "diagnosis" and "timeline" don't have dedicated columns yet — diagnosis
-// would likely come from the admitting consultation's `findings`, and the
-// timeline from a future confinement_notes/progress_notes table (the
-// Doctor Portal's confinement-note-process.php already writes something
-// like this). Both are illustrative placeholder content for now.
-$confinedPatientsRaw = [
-    [
-        "patient_id" => 1,
-        "name" => "Juan Dela Cruz",
-        "doctor" => "Dr. Ramon Santos",
-        "department" => "Internal Medicine",
-        "date_confined" => "2026-07-10",
-        "room" => "Ward 3, Bed 7",
-        "status" => "stable",
-        "diagnosis" => "Community-acquired pneumonia, responding to antibiotic therapy.",
-        "timeline" => [
-            ["text" => "Admitted to Ward 3, Bed 7", "time" => "Jul 10, 2026 — 8:14 AM"],
-            ["text" => "Started on IV antibiotics", "time" => "Jul 10, 2026 — 9:00 AM"],
-            ["text" => "Vitals stable, oxygen weaned to room air", "time" => "Jul 12, 2026 — 7:30 AM"],
-            ["text" => "Chest X-ray follow-up scheduled", "time" => "Jul 14, 2026 — 10:15 AM"],
-        ],
-    ],
-    [
-        "patient_id" => 19,
-        "name" => "Angela Mercado",
-        "doctor" => "Dr. Ramon Santos",
-        "department" => "Internal Medicine",
-        "date_confined" => "2026-07-11",
-        "room" => "Ward 3, Bed 7",
-        "status" => "improving",
-        "diagnosis" => "Dengue fever without warning signs, on supportive management.",
-        "timeline" => [
-            ["text" => "Admitted to Ward 3, Bed 7", "time" => "Jul 11, 2026 — 6:40 AM"],
-            ["text" => "Platelet count monitoring started", "time" => "Jul 11, 2026 — 7:00 AM"],
-            ["text" => "Fever subsided, appetite improving", "time" => "Jul 13, 2026 — 6:00 PM"],
-        ],
-    ],
-    [
-        "patient_id" => 24,
-        "name" => "Pedro Reyes",
-        "doctor" => "Dr. Liza Fernandez",
-        "department" => "Surgery",
-        "date_confined" => "2026-07-08",
-        "room" => "Ward 1, Bed 3",
-        "status" => "critical",
-        "diagnosis" => "Post-operative monitoring following emergency appendectomy.",
-        "timeline" => [
-            ["text" => "Admitted for post-op monitoring", "time" => "Jul 8, 2026 — 11:20 PM"],
-            ["text" => "Returned to OR for wound revision", "time" => "Jul 9, 2026 — 4:10 AM"],
-            ["text" => "Placed under close nursing observation", "time" => "Jul 9, 2026 — 5:00 AM"],
-        ],
-    ],
-    [
-        "patient_id" => 31,
-        "name" => "Maria Santos",
-        "doctor" => "Dr. Ramon Santos",
-        "department" => "Internal Medicine",
-        "date_confined" => "2026-07-13",
-        "room" => "Ward 2, Bed 5",
-        "status" => "stable",
-        "diagnosis" => "Hypertensive urgency, blood pressure under active management.",
-        "timeline" => [
-            ["text" => "Admitted to Ward 2, Bed 5", "time" => "Jul 13, 2026 — 2:05 PM"],
-            ["text" => "Started on oral antihypertensives", "time" => "Jul 13, 2026 — 2:45 PM"],
-        ],
-    ],
-];
+// ---- Which tab: currently-confined roster (default) or the full patient
+// directory. Same GET-param view-switch pattern as admin/user-management.php's
+// Active/Archived toggle. ----
+$currentTab = (($_GET['tab'] ?? '') === 'all-patients') ? 'all-patients' : 'confined';
 
-$confinedPatients = array_map(function ($p) {
-    $p['days_confined'] = (new DateTime($p['date_confined']))->diff(new DateTime('today'))->days + 1;
-    return $p;
-}, $confinedPatientsRaw);
+$confinedResult = $conn->query(
+    "SELECT c.confinement_id, c.patient_id,
+            p.first_name AS p_first, p.last_name AS p_last,
+            d.first_name AS d_first, d.last_name AS d_last,
+            dept.department_name,
+            c.date_confined, c.room_location, c.clinical_status
+     FROM confinements c
+     JOIN users p ON p.user_id = c.patient_id
+     JOIN users d ON d.user_id = c.attending_doctor_id
+     LEFT JOIN departments dept ON dept.department_id = d.department_id
+     WHERE c.discharge_status IS NULL
+     ORDER BY c.date_confined ASC"
+);
+$confinedRows = $confinedResult ? $confinedResult->fetch_all(MYSQLI_ASSOC) : [];
+
+// One extra query to pull every confinement_notes row for these
+// confinements at once (grouped in PHP below) instead of one query per row.
+$notesByConfinement = [];
+$confinementIds = array_column($confinedRows, 'confinement_id');
+if (!empty($confinementIds)) {
+    $idList = implode(',', array_map('intval', $confinementIds));
+    $notesResult = $conn->query(
+        "SELECT confinement_id, note, created_at FROM confinement_notes
+         WHERE confinement_id IN ($idList)
+         ORDER BY created_at ASC"
+    );
+    while ($n = $notesResult->fetch_assoc()) {
+        $notesByConfinement[$n['confinement_id']][] = $n;
+    }
+}
+
+$confinedPatients = array_map(function ($row) use ($notesByConfinement) {
+    $notes = $notesByConfinement[$row['confinement_id']] ?? [];
+    $admissionNote = $notes[0]['note'] ?? 'No admission note recorded.';
+
+    $timeline = array_map(function ($n) {
+        return [
+            "text" => $n['note'],
+            "time" => date("M j, Y — g:i A", strtotime($n['created_at'])),
+        ];
+    }, $notes);
+
+    return [
+        "patient_id"     => (int) $row['patient_id'],
+        "name"           => $row['p_first'] . ' ' . $row['p_last'],
+        "doctor"         => "Dr. " . $row['d_first'] . ' ' . $row['d_last'],
+        "department"     => $row['department_name'] ?? 'Unassigned',
+        "date_confined"  => $row['date_confined'],
+        "room"           => $row['room_location'] ?? '—',
+        "status"         => $row['clinical_status'],
+        "diagnosis"      => $admissionNote,
+        "timeline"       => $timeline,
+        "days_confined"  => (new DateTime($row['date_confined']))->diff(new DateTime('today'))->days + 1,
+    ];
+}, $confinedRows);
 
 $departments = array_values(array_unique(array_column($confinedPatients, 'department')));
 sort($departments);
@@ -110,6 +93,84 @@ function censusStatusLabel($status)
 {
     $map = ["stable" => "Stable", "improving" => "Improving", "critical" => "Critical"];
     return $map[$status] ?? ucfirst($status);
+}
+
+// ---- All Patients tab: hospital-wide directory + search, same
+// search-then-directory logic as doctor/patient-records.php (spec 2.7) -
+// this just gives admin the same read-only lookup. ----
+$patientQuery = '';
+$patientMatches = [];
+$allPatientsDirectory = [];
+
+function censusPatientStatusBadge($status)
+{
+    $badgeClass = [
+        "active" => "status-active",
+        "confined" => "status-confined",
+        "blocked" => "status-discharged",
+    ];
+    $badgeText = [
+        "active" => "Active",
+        "confined" => "Confined",
+        "blocked" => "Blocked",
+    ];
+    $class = $badgeClass[$status] ?? "status-active";
+    $text = $badgeText[$status] ?? ucfirst($status);
+    return [$class, $text];
+}
+
+if ($currentTab === 'all-patients') {
+    $patientQuery = trim($_GET['q'] ?? '');
+
+    if ($patientQuery !== '') {
+        if (ctype_digit($patientQuery)) {
+            // Looks like a patient ID — exact match only.
+            $stmt = $conn->prepare(
+                "SELECT user_id, first_name, last_name, status
+                 FROM users WHERE user_id = ? AND role = 'patient' LIMIT 1"
+            );
+            $stmt->bind_param("i", $patientQuery);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $patientMatches[] = $row;
+            }
+            $stmt->close();
+        } else {
+            // Name search — could match more than one patient.
+            $likeTerm = "%" . $patientQuery . "%";
+            $stmt = $conn->prepare(
+                "SELECT user_id, first_name, last_name, status
+                 FROM users
+                 WHERE role = 'patient' AND CONCAT(first_name, ' ', last_name) LIKE ?
+                 ORDER BY first_name, last_name
+                 LIMIT 20"
+            );
+            $stmt->bind_param("s", $likeTerm);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($row = $result->fetch_assoc()) {
+                $patientMatches[] = $row;
+            }
+            $stmt->close();
+        }
+    } else {
+        // Nothing searched yet — browsable directory, same 100-row cap as
+        // the doctor portal's version. Only name/id/status here, never
+        // medical history — that stays gated behind the record modal.
+        $stmt = $conn->prepare(
+            "SELECT user_id, first_name, last_name, status
+             FROM users WHERE role = 'patient'
+             ORDER BY first_name, last_name
+             LIMIT 100"
+        );
+        $stmt->execute();
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $allPatientsDirectory[] = $row;
+        }
+        $stmt->close();
+    }
 }
 
 $current_page = 'hospital-census';
@@ -124,6 +185,7 @@ $current_page = 'hospital-census';
     <link rel="stylesheet" href="../assets/css/doctor-dashboard.css">
     <link rel="stylesheet" href="../assets/css/admin-dashboard.css">
     <link rel="stylesheet" href="../assets/css/hospital-census.css">
+    <link rel="stylesheet" href="../assets/css/patient-records-modal.css">
 </head>
 
 <body>
@@ -137,107 +199,247 @@ $current_page = 'hospital-census';
             <header class="page-header">
                 <div>
                     <h1>Hospital Census</h1>
-                    <p class="page-subtitle">All currently confined patients, hospital-wide. Read-only.</p>
+                    <p class="page-subtitle">Confined patients and the full patient directory, hospital-wide. Read-only.</p>
                 </div>
                 <div class="header-actions">
                     <span class="header-date"><?php echo htmlspecialchars($today); ?></span>
                 </div>
             </header>
 
-            <section class="card queue-full-card">
-
-                <div class="queue-toolbar">
-                    <div class="search-field">
-                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        </svg>
-                        <input type="text" id="censusSearchInput" placeholder="Search patient name...">
-                    </div>
-
-                    <div class="toolbar-filters">
-                        <select id="departmentFilter" class="filter-select">
-                            <option value="all">All Departments</option>
-                            <?php foreach ($departments as $dept): ?>
-                                <option value="<?php echo htmlspecialchars($dept); ?>"><?php echo htmlspecialchars($dept); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-
-                        <select id="statusFilter" class="filter-select">
-                            <option value="all">All Statuses</option>
-                            <option value="stable">Stable</option>
-                            <option value="improving">Improving</option>
-                            <option value="critical">Critical</option>
-                        </select>
-
-                        <select id="sortSelect" class="filter-select">
-                            <option value="admission-desc">Newest Admission</option>
-                            <option value="admission-asc">Oldest Admission</option>
-                            <option value="days-desc">Most Days Confined</option>
-                            <option value="name-asc">Patient Name (A–Z)</option>
-                        </select>
-                    </div>
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <a href="?tab=confined" class="tab-btn <?php echo $currentTab === 'confined' ? 'active' : ''; ?>">Confined Patients</a>
+                    <a href="?tab=all-patients" class="tab-btn <?php echo $currentTab === 'all-patients' ? 'active' : ''; ?>">All Patients</a>
                 </div>
+            </div>
 
-                <?php if (count($confinedPatients) > 0): ?>
-                    <div class="table-wrap">
-                        <table class="queue-table" id="censusTable">
-                            <thead>
-                                <tr>
-                                    <th>Patient Name</th>
-                                    <th>Assigned Doctor</th>
-                                    <th>Admission Date</th>
-                                    <th>Days Confined</th>
-                                    <th>Room</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($confinedPatients as $p): ?>
-                                    <tr class="queue-row census-row"
-                                        data-patient-id="<?php echo (int) $p['patient_id']; ?>"
-                                        data-name="<?php echo htmlspecialchars(strtolower($p['name'])); ?>"
-                                        data-department="<?php echo htmlspecialchars($p['department']); ?>"
-                                        data-status="<?php echo htmlspecialchars($p['status']); ?>"
-                                        data-date="<?php echo htmlspecialchars($p['date_confined']); ?>"
-                                        data-days="<?php echo (int) $p['days_confined']; ?>"
-                                        tabindex="0">
-                                        <td class="patient-cell">
-                                            <span class="patient-avatar"><?php echo htmlspecialchars(strtoupper(substr($p['name'], 0, 1))); ?></span>
-                                            <?php echo htmlspecialchars($p['name']); ?>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($p['doctor']); ?></td>
-                                        <td><?php echo htmlspecialchars(date('M j, Y', strtotime($p['date_confined']))); ?></td>
-                                        <td><?php echo (int) $p['days_confined']; ?> day<?php echo $p['days_confined'] == 1 ? '' : 's'; ?></td>
-                                        <td><?php echo htmlspecialchars($p['room']); ?></td>
-                                        <td>
-                                            <span class="status-pill status-<?php echo htmlspecialchars($p['status']); ?>">
-                                                <?php echo htmlspecialchars(censusStatusLabel($p['status'])); ?>
-                                            </span>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
+            <?php if ($currentTab === 'confined'): ?>
+                <section class="card queue-full-card">
 
-                        <div class="no-results" id="noResultsRow" hidden>
-                            <p>No patients match your search or filters.</p>
-                        </div>
-                    </div>
-                <?php else: ?>
-                    <div class="empty-state">
-                        <div class="empty-illustration">
-                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M2 4v16"></path>
-                                <path d="M2 8h18a2 2 0 0 1 2 2v10"></path>
-                                <path d="M2 17h20"></path>
-                                <path d="M6 8v9"></path>
+                    <div class="queue-toolbar">
+                        <div class="search-field">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                             </svg>
+                            <input type="text" id="censusSearchInput" placeholder="Search patient name...">
                         </div>
-                        <p>No confined patients.</p>
+
+                        <div class="toolbar-filters">
+                            <select id="departmentFilter" class="filter-select">
+                                <option value="all">All Departments</option>
+                                <?php foreach ($departments as $dept): ?>
+                                    <option value="<?php echo htmlspecialchars($dept); ?>"><?php echo htmlspecialchars($dept); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+
+                            <select id="statusFilter" class="filter-select">
+                                <option value="all">All Statuses</option>
+                                <option value="stable">Stable</option>
+                                <option value="improving">Improving</option>
+                                <option value="critical">Critical</option>
+                            </select>
+
+                            <select id="sortSelect" class="filter-select">
+                                <option value="admission-desc">Newest Admission</option>
+                                <option value="admission-asc">Oldest Admission</option>
+                                <option value="days-desc">Most Days Confined</option>
+                                <option value="name-asc">Patient Name (A–Z)</option>
+                            </select>
+                        </div>
                     </div>
+
+                    <?php if (count($confinedPatients) > 0): ?>
+                        <div class="table-wrap">
+                            <table class="queue-table" id="censusTable">
+                                <thead>
+                                    <tr>
+                                        <th>Patient Name</th>
+                                        <th>Assigned Doctor</th>
+                                        <th>Admission Date</th>
+                                        <th>Days Confined</th>
+                                        <th>Room</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($confinedPatients as $p): ?>
+                                        <tr class="queue-row census-row"
+                                            data-patient-id="<?php echo (int) $p['patient_id']; ?>"
+                                            data-name="<?php echo htmlspecialchars(strtolower($p['name'])); ?>"
+                                            data-department="<?php echo htmlspecialchars($p['department']); ?>"
+                                            data-status="<?php echo htmlspecialchars($p['status']); ?>"
+                                            data-date="<?php echo htmlspecialchars($p['date_confined']); ?>"
+                                            data-days="<?php echo (int) $p['days_confined']; ?>"
+                                            tabindex="0">
+                                            <td class="patient-cell">
+                                                <span class="patient-avatar"><?php echo htmlspecialchars(strtoupper(substr($p['name'], 0, 1))); ?></span>
+                                                <?php echo htmlspecialchars($p['name']); ?>
+                                            </td>
+                                            <td><?php echo htmlspecialchars($p['doctor']); ?></td>
+                                            <td><?php echo htmlspecialchars(date('M j, Y', strtotime($p['date_confined']))); ?></td>
+                                            <td><?php echo (int) $p['days_confined']; ?> day<?php echo $p['days_confined'] == 1 ? '' : 's'; ?></td>
+                                            <td><?php echo htmlspecialchars($p['room']); ?></td>
+                                            <td>
+                                                <span class="status-pill status-<?php echo htmlspecialchars($p['status']); ?>">
+                                                    <?php echo htmlspecialchars(censusStatusLabel($p['status'])); ?>
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+
+                            <div class="no-results" id="noResultsRow" hidden>
+                                <p>No patients match your search or filters.</p>
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <div class="empty-illustration">
+                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M2 4v16"></path>
+                                    <path d="M2 8h18a2 2 0 0 1 2 2v10"></path>
+                                    <path d="M2 17h20"></path>
+                                    <path d="M6 8v9"></path>
+                                </svg>
+                            </div>
+                            <p>No confined patients.</p>
+                        </div>
+                    <?php endif; ?>
+                </section>
+            <?php endif; ?>
+
+            <?php if ($currentTab === 'all-patients'): ?>
+                <section class="card search-card">
+                    <form method="GET" action="hospital-census.php" class="search-section">
+                        <input type="hidden" name="tab" value="all-patients">
+                        <div class="search-input-wrapper">
+                            <input
+                                type="text"
+                                id="patientSearchInput"
+                                name="q"
+                                placeholder="Search by Patient Name or ID (e.g., 1)..."
+                                class="search-input-large"
+                                value="<?php echo htmlspecialchars($patientQuery); ?>">
+                        </div>
+                        <div class="search-buttons">
+                            <button id="patientSearchBtn" class="btn btn-search" type="submit">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.35-4.35"></path>
+                                </svg>
+                                Search
+                            </button>
+                            <a id="patientClearBtn" class="btn btn-secondary" href="?tab=all-patients">
+                                Clear
+                            </a>
+                        </div>
+                    </form>
+                </section>
+
+                <?php if ($patientQuery === ''): ?>
+                    <!-- Nothing searched yet — browsable directory -->
+                    <section class="card">
+                        <div class="card-header">
+                            <h2>All Patients</h2>
+                            <span class="card-subtitle"><?php echo count($allPatientsDirectory); ?> total</span>
+                        </div>
+                        <?php if (count($allPatientsDirectory) > 0): ?>
+                            <div class="table-wrap">
+                                <table class="records-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Patient ID</th>
+                                            <th>Classification</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($allPatientsDirectory as $p):
+                                            [$pClass, $pText] = censusPatientStatusBadge($p['status']);
+                                            $pClassification = patient_classification($p['status']);
+                                        ?>
+                                            <tr class="patient-row" data-patient-id="<?php echo (int) $p['user_id']; ?>">
+                                                <td><?php echo htmlspecialchars(trim($p['first_name'] . ' ' . $p['last_name'])); ?></td>
+                                                <td><?php echo (int) $p['user_id']; ?></td>
+                                                <td><span class="classification-badge <?php echo $pClassification['class']; ?>"><?php echo htmlspecialchars($pClassification['label']); ?></span></td>
+                                                <td><span class="status-pill <?php echo $pClass; ?>"><?php echo $pText; ?></span></td>
+                                                <td>
+                                                    <button type="button" class="btn-view-record view-patient-btn" data-patient-id="<?php echo (int) $p['user_id']; ?>">
+                                                        View Details
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php else: ?>
+                            <div class="empty-state">
+                                <p>No patients are registered yet.</p>
+                            </div>
+                        <?php endif; ?>
+                    </section>
+                <?php elseif (count($patientMatches) > 0): ?>
+                    <!-- Search results (one or more matches) -->
+                    <section class="card">
+                        <div class="card-header">
+                            <h2>Search Results</h2>
+                            <span class="card-subtitle"><?php echo count($patientMatches); ?> found</span>
+                        </div>
+                        <div class="table-wrap">
+                            <table class="records-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Patient ID</th>
+                                        <th>Classification</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($patientMatches as $m):
+                                        [$mClass, $mText] = censusPatientStatusBadge($m['status']);
+                                        $mClassification = patient_classification($m['status']);
+                                    ?>
+                                        <tr class="patient-row" data-patient-id="<?php echo (int) $m['user_id']; ?>">
+                                            <td><?php echo htmlspecialchars(trim($m['first_name'] . ' ' . $m['last_name'])); ?></td>
+                                            <td><?php echo (int) $m['user_id']; ?></td>
+                                            <td><span class="classification-badge <?php echo $mClassification['class']; ?>"><?php echo htmlspecialchars($mClassification['label']); ?></span></td>
+                                            <td><span class="status-pill <?php echo $mClass; ?>"><?php echo $mText; ?></span></td>
+                                            <td>
+                                                <button type="button" class="btn-view-record view-patient-btn" data-patient-id="<?php echo (int) $m['user_id']; ?>">
+                                                    View Details
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                <?php else: ?>
+                    <!-- No results for this search -->
+                    <section class="card">
+                        <div class="empty-state">
+                            <div class="empty-illustration">
+                                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                    <line x1="12" y1="11" x2="12" y2="17"></line>
+                                    <line x1="9" y1="14" x2="15" y2="14"></line>
+                                </svg>
+                            </div>
+                            <p><strong>No patient records found for "<?php echo htmlspecialchars($patientQuery); ?>".</strong></p>
+                            <p style="color: var(--text-muted); font-size: 13.5px;">Try a different name, or search by patient ID.</p>
+                        </div>
+                    </section>
                 <?php endif; ?>
-            </section>
+            <?php endif; ?>
 
             <footer class="page-footer">
                 <p>&copy; <?php echo date("Y"); ?> GabayMed Hospital Management System</p>
@@ -287,7 +489,7 @@ $current_page = 'hospital-census';
                 </div>
 
                 <div class="drawer-section">
-                    <p class="drawer-section-title">Diagnosis</p>
+                    <p class="drawer-section-title">Admission Note</p>
                     <div class="drawer-diagnosis-box" id="drawerDiagnosis"></div>
                 </div>
 
@@ -298,6 +500,42 @@ $current_page = 'hospital-census';
             </div>
         </aside>
     </div>
+
+    <!-- Patient record modal (All Patients tab) — populated dynamically by
+         patient-records.js, same modal used by the doctor portal's Patient
+         Records page. Harmless to include on the Confined Patients tab too
+         since nothing on that tab carries a .patient-row/.view-patient-btn
+         trigger for it to bind to. -->
+    <div class="modal-backdrop" id="patientModalBackdrop">
+        <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modalPatientName">
+            <div class="modal-header">
+                <div class="modal-header-top">
+                    <div class="modal-identity">
+                        <div class="modal-avatar" id="modalAvatar">--</div>
+                        <div class="modal-identity-text">
+                            <h2 id="modalPatientName">Patient Record</h2>
+                            <div class="modal-identity-meta">
+                                <span class="modal-patient-id" id="modalPatientId"></span>
+                                <span class="classification-badge" id="modalClassificationBadge"></span>
+                                <span class="status-pill" id="modalStatusBadge"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="modal-close-btn" id="modalCloseBtn" aria-label="Close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="modal-loading">Loading patient record...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../assets/js/patient-records.js"></script>
 
     <script>
         // Same data the table above was rendered from, re-exposed as JSON so
@@ -407,11 +645,15 @@ $current_page = 'hospital-census';
                 document.getElementById('drawerDiagnosis').textContent = p.diagnosis;
 
                 const timelineEl = document.getElementById('drawerTimeline');
-                timelineEl.innerHTML = (p.timeline || []).map(function(item) {
-                    return '<li class="activity-item"><span class="activity-dot"></span>' +
-                        '<div class="activity-body"><p>' + escapeHtml(item.text) + '</p>' +
-                        '<span class="activity-time">' + escapeHtml(item.time) + '</span></div></li>';
-                }).join('');
+                if (p.timeline && p.timeline.length > 0) {
+                    timelineEl.innerHTML = p.timeline.map(function(item) {
+                        return '<li class="activity-item"><span class="activity-dot"></span>' +
+                            '<div class="activity-body"><p>' + escapeHtml(item.text) + '</p>' +
+                            '<span class="activity-time">' + escapeHtml(item.time) + '</span></div></li>';
+                    }).join('');
+                } else {
+                    timelineEl.innerHTML = '<li class="activity-item"><div class="activity-body"><p>No notes recorded yet.</p></div></li>';
+                }
 
                 backdrop.classList.add('active');
                 document.body.classList.add('drawer-open');

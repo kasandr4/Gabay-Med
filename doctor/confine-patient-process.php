@@ -143,9 +143,47 @@ try {
     $stmt->execute();
     $stmt->close();
 
+    // A confined patient can't attend outpatient visits, and a confined
+    // patient can't book new ones (book-appointment.php blocks them). Any
+    // appointment they still hold that hasn't happened yet would otherwise
+    // be swept to 'no_show' by includes/no_show_policy.php - adding strikes
+    // and eventually BLOCKING an inpatient's account for missing visits
+    // they physically couldn't attend. Cancel them instead, without the
+    // late-cancellation penalty (late_cancel_count is deliberately not
+    // touched), and tell the patient and each affected doctor below.
+    $cancelledAppointments = [];
+    $stmt = $conn->prepare(
+        "SELECT appointment_id, doctor_id, slot_start FROM appointments
+         WHERE patient_id = ? AND status IN ('pending', 'confirmed') AND checked_in_at IS NULL
+         FOR UPDATE"
+    );
+    $stmt->bind_param("i", $patientId);
+    $stmt->execute();
+    $cancelledAppointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    if (!empty($cancelledAppointments)) {
+        $cancelReason = "Patient was admitted to confinement.";
+        $stmt = $conn->prepare(
+            "UPDATE appointments SET status = 'cancelled', cancellation_reason = ?
+             WHERE appointment_id = ? AND patient_id = ? AND status IN ('pending', 'confirmed')"
+        );
+        foreach ($cancelledAppointments as $ca) {
+            $caId = (int) $ca['appointment_id'];
+            $stmt->bind_param("sii", $cancelReason, $caId, $patientId);
+            $stmt->execute();
+        }
+        $stmt->close();
+    }
+
     $conn->commit();
 } catch (Exception $e) {
     $conn->rollback();
+    // unique_active_confinement_per_patient (migration 027) caught a race
+    // the ongoing-confinement check above couldn't.
+    if ($e instanceof mysqli_sql_exception && $e->getCode() === 1062) {
+        backToAdmission($patientId, $appointmentId, "error", "This patient already has an ongoing confinement.");
+    }
     backToAdmission($patientId, $appointmentId, "error", "Something went wrong while admitting the patient. Please try again.");
 }
 
@@ -155,6 +193,33 @@ create_notification(
     "You have been admitted to confinement (Room: {$roomLocation}). Your care team will keep you updated.",
     "confinement-dashboard.php"
 );
+
+// Appointments cancelled by the admission above (see the transaction) -
+// the patient gets one summary, and each affected doctor is told which
+// slot just opened up.
+if (!empty($cancelledAppointments)) {
+    $n = count($cancelledAppointments);
+    create_notification(
+        $conn,
+        $patientId,
+        $n === 1
+            ? "Your appointment on " . date('M j, Y \a\t g:i A', strtotime($cancelledAppointments[0]['slot_start'])) . " was cancelled because you are now admitted."
+            : "Your {$n} upcoming appointments were cancelled because you are now admitted.",
+        "dashboard.php"
+    );
+    $patientNameForDoctors = trim(($_SESSION['first_name'] ?? '') . ' ' . ($_SESSION['last_name'] ?? ''));
+    foreach ($cancelledAppointments as $ca) {
+        if ((int) $ca['doctor_id'] === $doctorId) {
+            continue; // the admitting doctor already knows
+        }
+        create_notification(
+            $conn,
+            (int) $ca['doctor_id'],
+            "Appointment cancelled: a patient was admitted to confinement. Slot: " . date('M j, Y \a\t g:i A', strtotime($ca['slot_start'])) . ".",
+            "todays-queue.php"
+        );
+    }
+}
 
 $_SESSION['confine_flash'] = [
     "type" => "success",

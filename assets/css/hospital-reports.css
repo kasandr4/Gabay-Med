@@ -68,6 +68,23 @@
 .reports-analytics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .report-chart-card { min-height: 258px; display: flex; flex-direction: column; }
 .report-chart-card .card-header { align-items: flex-start; }
+
+/* Real bar lists and breakdown lists (2026-08-08) — replaces the old
+   mock-bar-chart/mock-donut-chart/etc. classes with plain, honest bars
+   sized from real counts, since there's no longer any fake data to
+   decorate. */
+.reports-empty-note { color: var(--text-muted); font-size: 13.5px; margin: auto 0; }
+.real-bar-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.real-bar-row { display: grid; grid-template-columns: 108px 1fr 34px; align-items: center; gap: 10px; }
+.real-bar-label { font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.real-bar-track { background: var(--border); border-radius: 999px; height: 8px; overflow: hidden; }
+.real-bar-fill { background: var(--teal); height: 100%; border-radius: 999px; }
+.real-bar-value { font-size: 12.5px; font-weight: 700; color: var(--text-primary); text-align: right; }
+.real-simple-list { display: flex; flex-direction: column; gap: 9px; }
+.real-simple-list > div { display: flex; justify-content: space-between; align-items: center; font-size: 13.5px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.real-simple-list > div:last-child { border-bottom: none; }
+.real-simple-list > div > span { color: var(--text-secondary); }
+.real-simple-list > div > strong { color: var(--text-primary); }
 .mock-bar-chart { flex: 1; min-height: 150px; display: flex; align-items: flex-end; gap: 9px; padding: 14px; border-radius: var(--radius-md); background: linear-gradient(180deg, var(--bg), #fff); border: 1px solid var(--border); }
 .mock-bar-chart span { flex: 1; min-width: 10px; border-radius: 8px 8px 3px 3px; background: linear-gradient(180deg, var(--teal), var(--blue)); opacity: 0.9; }
 .mock-line-chart { position: relative; flex: 1; min-height: 150px; border: 1px solid var(--border); border-radius: var(--radius-md); background: linear-gradient(135deg, transparent 0 18%, rgba(23,152,181,.26) 18% 19%, transparent 19% 42%, rgba(23,152,181,.32) 42% 43%, transparent 43% 69%, rgba(23,152,181,.3) 69% 70%, transparent 70%), repeating-linear-gradient(0deg,#fff,#fff 35px,var(--bg) 36px); }

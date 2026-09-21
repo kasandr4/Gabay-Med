@@ -1,19 +1,30 @@
 // assets/js/user-management.js
 // GabayMed — Admin Portal: User Management page.
-// UI ONLY: everything here is DOM/state manipulation over the placeholder
-// rows rendered by admin/user-management.php. There is no fetch() to a
-// backend anywhere in this file — actions like Block/Deactivate/Delete
-// only update the row on screen and show a toast, exactly like the
-// no-backend patterns already used by hospital-reports.js /
-// reconciliation.js. Swap in real requests once the API layer exists.
+// Posts to admin/user-management-actions.php (create_user, update_user,
+// toggle_active, set_status, reset_password, archive_user, restore_user).
+// After any mutating action, the page reloads (preserving ?view=) so the
+// stat cards / tab counts / donut chart — which are all server-computed —
+// stay correct without duplicating that logic in JS. A toast message
+// survives the reload via sessionStorage.
 
 (function () {
     'use strict';
 
-    // umUsers is defined inline in user-management.php (same pattern as
-    // hospital-census.php's `censusData`) so the drawer/modal don't need a
-    // second round trip for placeholder data.
+    // umUsers / umCurrentView are defined inline in user-management.php.
     const usersById = (typeof umUsers !== 'undefined') ? umUsers : {};
+    const currentView = (typeof umCurrentView !== 'undefined') ? umCurrentView : 'active';
+    const csrfTokenEl = document.getElementById('umCsrfToken');
+    const csrfToken = csrfTokenEl ? csrfTokenEl.value : '';
+
+    const statusPillClass = {
+        active: 'status-um-active', pending: 'status-um-pending', blocked: 'status-um-blocked',
+        confined: 'status-um-confined', deceased: 'status-um-deceased',
+        deactivated: 'status-um-deactivated', archived: 'status-um-archived'
+    };
+    const statusLabels = {
+        active: 'Active', pending: 'Pending', blocked: 'Blocked',
+        confined: 'Confined', deceased: 'Deceased', deactivated: 'Deactivated', archived: 'Archived'
+    };
 
     /* ============================= Toasts ============================= */
 
@@ -34,6 +45,38 @@
             toast.classList.remove('um-toast-show');
             setTimeout(() => toast.remove(), 250);
         }, 3200);
+    }
+
+    // Show any toast queued before the last reload (see queueToastAndReload).
+    (function showPendingToast() {
+        const pending = sessionStorage.getItem('umPendingToast');
+        if (!pending) return;
+        sessionStorage.removeItem('umPendingToast');
+        try {
+            const data = JSON.parse(pending);
+            showToast(data.message, data.isDanger);
+        } catch (e) { /* ignore malformed entry */ }
+    })();
+
+    function queueToastAndReload(message, isDanger) {
+        sessionStorage.setItem('umPendingToast', JSON.stringify({ message: message, isDanger: !!isDanger }));
+        window.location.reload();
+    }
+
+    /* ============================ Backend calls =========================== */
+
+    function postAction(params) {
+        const body = new URLSearchParams(params);
+        body.set('csrf_token', csrfToken);
+        return fetch('user-management-actions.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        }).then(function (res) {
+            return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+        }).catch(function () {
+            return { ok: false, data: { success: false, error: 'Network error. Please check your connection and try again.' } };
+        });
     }
 
     /* ======================= Tabs / Search / Filters ==================== */
@@ -140,18 +183,12 @@
     });
 
     /* ============================== Refresh ============================= */
+    // A real reload — filters/sort reset, but the data is guaranteed fresh.
 
     const refreshBtn = document.getElementById('umRefreshBtn');
-    if (refreshBtn && tableWrap) {
+    if (refreshBtn) {
         refreshBtn.addEventListener('click', function () {
-            tableWrap.classList.add('is-loading');
-            refreshBtn.classList.add('is-spinning');
-            setTimeout(function () {
-                tableWrap.classList.remove('is-loading');
-                refreshBtn.classList.remove('is-spinning');
-                applyFilters();
-                showToast('User list refreshed.');
-            }, 650);
+            window.location.reload();
         });
     }
 
@@ -165,13 +202,13 @@
                 showToast('No users to export for the current filters.', true);
                 return;
             }
-            const header = ['Name', 'Email', 'Phone', 'Role', 'Department', 'Status', 'Last Login'];
+            const header = ['Name', 'Email', 'Phone', 'Role', 'Department', 'Status', 'Date Registered'];
             const lines = [header.join(',')];
             visibleRows.forEach(function (row) {
                 const id = row.getAttribute('data-user-id');
                 const u = usersById[id];
                 if (!u) return;
-                const cells = [u.full_name, u.email, u.phone, u.role_label, u.department, u.status_label, u.last_login]
+                const cells = [u.full_name, u.email || '', u.phone, u.role_label, u.department_name, u.status_label, u.date_registered]
                     .map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; });
                 lines.push(cells.join(','));
             });
@@ -215,11 +252,6 @@
     const drawerCloseBtn = document.getElementById('umDrawerCloseBtn');
     let currentDrawerUserId = null;
 
-    const statusPillClass = {
-        active: 'status-um-active', inactive: 'status-um-inactive', blocked: 'status-um-blocked',
-        pending: 'status-um-pending', deactivated: 'status-um-deactivated'
-    };
-
     function openDrawer(userId) {
         const u = usersById[userId];
         if (!u) return;
@@ -227,22 +259,20 @@
 
         document.getElementById('umDrawerAvatar').textContent = u.initials;
         document.getElementById('umDrawerName').textContent = u.full_name;
-        document.getElementById('umDrawerSub').textContent = u.role_label + ' · ' + u.department;
+        document.getElementById('umDrawerSub').textContent = u.role_label + ' · ' + u.department_name;
 
         const statusEl = document.getElementById('umDrawerStatus');
         statusEl.textContent = u.status_label;
-        statusEl.className = 'status-pill ' + (statusPillClass[u.status] || '');
+        statusEl.className = 'status-pill ' + (statusPillClass[u.status_key] || '');
 
-        document.getElementById('umDrawerEmail').textContent = u.email;
+        document.getElementById('umDrawerEmail').textContent = u.email || '—';
         document.getElementById('umDrawerPhone').textContent = u.phone;
-        document.getElementById('umDrawerAddress').textContent = u.address;
-        document.getElementById('umDrawerGender').textContent = u.gender;
-        document.getElementById('umDrawerBirthdate').textContent = u.birthdate;
-        document.getElementById('umDrawerUsername').textContent = u.username;
+        document.getElementById('umDrawerAddress').textContent = u.address || '—';
+        document.getElementById('umDrawerGender').textContent = u.sex ? (u.sex.charAt(0).toUpperCase() + u.sex.slice(1)) : '—';
+        document.getElementById('umDrawerBirthdate').textContent = u.birthdate || '—';
         document.getElementById('umDrawerRole').textContent = u.role_label;
-        document.getElementById('umDrawerDepartment').textContent = u.department;
+        document.getElementById('umDrawerDepartment').textContent = u.department_name;
         document.getElementById('umDrawerRegistered').textContent = u.date_registered;
-        document.getElementById('umDrawerLastLogin').textContent = u.last_login;
 
         const timeline = document.getElementById('umDrawerActivity');
         timeline.innerHTML = '';
@@ -261,6 +291,12 @@
 
         const printLink = document.getElementById('umDrawerPrintBtn');
         if (printLink) printLink.setAttribute('data-user-id', userId);
+
+        // Archived users can only be viewed/restored, not edited or reset.
+        const editBtn = document.getElementById('umDrawerEditBtn');
+        const resetBtnDrawer = document.getElementById('umDrawerResetBtn');
+        if (editBtn) editBtn.hidden = (currentView === 'archived');
+        if (resetBtnDrawer) resetBtnDrawer.hidden = (currentView === 'archived');
 
         drawerBackdrop.classList.add('active');
         document.body.classList.add('drawer-open');
@@ -291,28 +327,63 @@
     const userModalTitle = document.getElementById('umUserModalTitle');
     const userModalSubmitBtn = document.getElementById('umUserModalSubmitBtn');
     const addUserBtn = document.getElementById('umAddUserBtn');
+    const formErrorEl = document.getElementById('umFormError');
+    const passwordRow = userForm ? userForm.querySelector('.um-form-row-password') : null;
+    const passwordNote = userForm ? userForm.querySelector('.um-form-password-note') : null;
+    const staffTypeRow = userForm ? userForm.querySelector('.um-form-row-staff-type') : null;
+    const roleSelectEl = userForm ? userForm.querySelector('[name="role"]') : null;
+
+    // Staff Type only means anything for role=staff — see
+    // 013_staff_subtype.sql. Toggled on every role change, not just on
+    // modal open, so switching the dropdown live shows/hides it too.
+    function syncStaffTypeVisibility() {
+        if (!staffTypeRow || !roleSelectEl) return;
+        staffTypeRow.hidden = (roleSelectEl.value !== 'staff');
+    }
+    if (roleSelectEl) roleSelectEl.addEventListener('change', syncStaffTypeVisibility);
+
+    function showFormError(message) {
+        if (!formErrorEl) return;
+        formErrorEl.textContent = message;
+        formErrorEl.hidden = false;
+    }
+
+    function clearFormError() {
+        if (!formErrorEl) return;
+        formErrorEl.hidden = true;
+        formErrorEl.textContent = '';
+    }
 
     function openUserModal(mode, userId) {
         userForm.reset();
-        userForm.querySelector('[name="status"]').value = 'pending';
-        if (mode === 'edit' && userId && usersById[userId]) {
-            const u = usersById[userId];
+        clearFormError();
+        const u = (mode === 'edit' && userId) ? usersById[userId] : null;
+
+        if (u) {
             userModalTitle.textContent = 'Edit User';
             userModalSubmitBtn.textContent = 'Save Changes';
             userForm.querySelector('[name="first_name"]').value = u.first_name;
             userForm.querySelector('[name="last_name"]').value = u.last_name;
-            userForm.querySelector('[name="email"]').value = u.email;
+            userForm.querySelector('[name="email"]').value = u.email || '';
             userForm.querySelector('[name="phone"]').value = u.phone;
-            userForm.querySelector('[name="username"]').value = u.username;
             userForm.querySelector('[name="role"]').value = u.role;
-            userForm.querySelector('[name="department"]').value = u.department;
-            userForm.querySelector('[name="status"]').value = u.status;
+            userForm.querySelector('[name="department_id"]').value = u.department_id || '';
+            userForm.querySelector('[name="staff_type"]').value = u.staff_type || 'front_desk';
+            userForm.querySelector('[name="sex"]').value = u.sex || '';
+            userForm.querySelector('[name="birthdate"]').value = u.birthdate || '';
+            userForm.querySelector('[name="address"]').value = u.address || '';
+            userForm.querySelector('[name="action"]').value = 'update_user';
+            if (passwordRow) passwordRow.hidden = true;
+            if (passwordNote) passwordNote.hidden = false;
         } else {
             userModalTitle.textContent = 'Add User';
             userModalSubmitBtn.textContent = 'Create User';
+            userForm.querySelector('[name="action"]').value = 'create_user';
+            if (passwordRow) passwordRow.hidden = false;
+            if (passwordNote) passwordNote.hidden = true;
         }
-        userForm.setAttribute('data-mode', mode);
-        userForm.setAttribute('data-user-id', userId || '');
+        userForm.querySelector('[name="user_id"]').value = userId || '';
+        syncStaffTypeVisibility();
         userModalBackdrop.classList.add('active');
         document.body.classList.add('modal-open');
     }
@@ -347,13 +418,27 @@
     if (userForm) {
         userForm.addEventListener('submit', function (e) {
             e.preventDefault();
-            const mode = userForm.getAttribute('data-mode');
-            const firstName = userForm.querySelector('[name="first_name"]').value.trim() || 'New';
-            const lastName = userForm.querySelector('[name="last_name"]').value.trim() || 'User';
-            closeUserModal();
-            showToast(mode === 'edit'
-                ? 'Changes saved for ' + firstName + ' ' + lastName + '.'
-                : firstName + ' ' + lastName + ' was added (UI only — not saved).');
+            clearFormError();
+            const mode = userForm.querySelector('[name="action"]').value === 'update_user' ? 'edit' : 'add';
+            const submitBtn = userModalSubmitBtn;
+            const originalLabel = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = mode === 'edit' ? 'Saving…' : 'Creating…';
+
+            const formData = new FormData(userForm);
+            const params = {};
+            formData.forEach(function (value, key) { params[key] = value; });
+
+            postAction(params).then(function (result) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalLabel;
+                if (result.data && result.data.success) {
+                    closeUserModal();
+                    queueToastAndReload(result.data.message || (mode === 'edit' ? 'Changes saved.' : 'User created.'));
+                } else {
+                    showFormError((result.data && result.data.error) || 'Something went wrong. Please try again.');
+                }
+            });
         });
     }
 
@@ -361,13 +446,14 @@
 
     const confirmModals = {
         reset: document.getElementById('umResetPasswordModal'),
-        block: document.getElementById('umBlockModal'),
-        deactivate: document.getElementById('umDeactivateModal'),
-        delete: document.getElementById('umDeleteModal'),
+        status: document.getElementById('umSetStatusModal'),
+        'toggle-active': document.getElementById('umDeactivateModal'),
+        archive: document.getElementById('umArchiveModal'),
+        restore: document.getElementById('umRestoreModal'),
     };
 
     let confirmTargetUserId = null;
-    let confirmTargetRow = null;
+    let confirmTargetStatusValue = null;
 
     function fillConfirmModal(type, u) {
         const modal = confirmModals[type];
@@ -376,17 +462,40 @@
         const subEl = modal.querySelector('.um-confirm-user-sub');
         const avatarEl = modal.querySelector('.um-confirm-user-avatar');
         if (nameEl) nameEl.textContent = u.full_name;
-        if (subEl) subEl.textContent = u.role_label + ' · ' + u.department;
+        if (subEl) subEl.textContent = u.role_label + ' · ' + u.department_name;
         if (avatarEl) avatarEl.textContent = u.initials;
     }
 
-    function openConfirmModal(type, userId, row) {
+    function openConfirmModal(type, userId, statusValue) {
         const u = usersById[userId];
         const modal = confirmModals[type];
         if (!u || !modal) return;
         confirmTargetUserId = userId;
-        confirmTargetRow = row;
+        confirmTargetStatusValue = statusValue || null;
         fillConfirmModal(type, u);
+
+        if (type === 'status') {
+            const label = statusLabels[statusValue] || statusValue;
+            document.getElementById('umSetStatusTitle').textContent = 'Mark as ' + label;
+            document.getElementById('umSetStatusCopy').textContent = 'Set this user\u2019s status to "' + label + '"?';
+        }
+
+        if (type === 'toggle-active') {
+            const willDeactivate = !!u.is_active;
+            document.getElementById('umDeactivateTitle').textContent = willDeactivate ? 'Deactivate User' : 'Reactivate User';
+            document.getElementById('umDeactivateCopy').textContent = willDeactivate
+                ? 'The account will be marked deactivated and hidden from active rosters. Continue for:'
+                : 'The account will regain the ability to log in. Continue for:';
+            document.getElementById('umDeactivateConfirmBtn').textContent = willDeactivate ? 'Deactivate User' : 'Reactivate User';
+        }
+
+        if (type === 'reset') {
+            document.getElementById('umResetConfirmView').hidden = false;
+            document.getElementById('umResetResultView').hidden = true;
+            document.getElementById('umResetConfirmActions').hidden = false;
+            document.getElementById('umResetDoneActions').hidden = true;
+        }
+
         modal.classList.add('active');
         document.body.classList.add('modal-open');
     }
@@ -399,41 +508,73 @@
         }
     }
 
-    function updateRowStatus(row, status, label) {
-        if (!row) return;
-        row.setAttribute('data-status', status);
-        const pill = row.querySelector('.um-status-pill');
-        if (pill) {
-            pill.className = 'status-pill um-status-pill ' + (statusPillClass[status] || '');
-            pill.textContent = label;
-        }
-    }
-
     document.querySelectorAll('[data-confirm-action]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             const type = btn.getAttribute('data-confirm-action');
-            closeConfirmModal(type);
             if (!confirmTargetUserId) return;
-            const u = usersById[confirmTargetUserId];
+            const userId = confirmTargetUserId;
 
             if (type === 'reset') {
-                showToast('Password reset link sent to ' + (u ? u.email : 'user') + '.');
-            } else if (type === 'block') {
-                updateRowStatus(confirmTargetRow, 'blocked', 'Blocked');
-                showToast((u ? u.full_name : 'User') + ' has been blocked.', true);
-            } else if (type === 'deactivate') {
-                updateRowStatus(confirmTargetRow, 'deactivated', 'Deactivated');
-                showToast((u ? u.full_name : 'User') + ' has been deactivated.', true);
-            } else if (type === 'delete') {
-                if (confirmTargetRow) confirmTargetRow.remove();
-                showToast((u ? u.full_name : 'User') + ' was deleted (UI only — not saved).', true);
-                applyFilters();
+                btn.disabled = true;
+                postAction({ action: 'reset_password', user_id: userId }).then(function (result) {
+                    btn.disabled = false;
+                    if (result.data && result.data.success) {
+                        document.getElementById('umResetTempPassword').value = result.data.temp_password || '';
+                        document.getElementById('umResetConfirmView').hidden = true;
+                        document.getElementById('umResetResultView').hidden = false;
+                        document.getElementById('umResetConfirmActions').hidden = true;
+                        document.getElementById('umResetDoneActions').hidden = false;
+                    } else {
+                        closeConfirmModal(type);
+                        showToast((result.data && result.data.error) || 'Could not reset password.', true);
+                    }
+                });
+                return;
             }
-            if (drawerBackdrop && drawerBackdrop.classList.contains('active')) closeDrawer();
-            confirmTargetUserId = null;
-            confirmTargetRow = null;
+
+            let params = null;
+            if (type === 'status') {
+                params = { action: 'set_status', user_id: userId, status: confirmTargetStatusValue };
+            } else if (type === 'toggle-active') {
+                params = { action: 'toggle_active', user_id: userId };
+            } else if (type === 'archive') {
+                params = { action: 'archive_user', user_id: userId };
+            } else if (type === 'restore') {
+                params = { action: 'restore_user', user_id: userId };
+            }
+            if (!params) return;
+
+            closeConfirmModal(type);
+            postAction(params).then(function (result) {
+                if (result.data && result.data.success) {
+                    queueToastAndReload(result.data.message || 'Done.', type === 'archive');
+                } else {
+                    showToast((result.data && result.data.error) || 'Something went wrong. Please try again.', true);
+                }
+            });
         });
     });
+
+    const resetCopyBtn = document.getElementById('umResetCopyBtn');
+    if (resetCopyBtn) {
+        resetCopyBtn.addEventListener('click', function () {
+            const input = document.getElementById('umResetTempPassword');
+            input.select();
+            navigator.clipboard && navigator.clipboard.writeText(input.value).then(function () {
+                showToast('Temporary password copied.');
+            }).catch(function () {
+                showToast('Could not copy automatically — please copy manually.', true);
+            });
+        });
+    }
+
+    const resetDoneBtn = document.getElementById('umResetDoneBtn');
+    if (resetDoneBtn) {
+        resetDoneBtn.addEventListener('click', function () {
+            closeConfirmModal('reset');
+            queueToastAndReload('Password reset.');
+        });
+    }
 
     /* ===================== Wire up row + kebab menu actions =============== */
 
@@ -461,10 +602,11 @@
 
         if (action === 'view') openDrawer(userId);
         else if (action === 'edit') openUserModal('edit', userId);
-        else if (action === 'reset') openConfirmModal('reset', userId, row);
-        else if (action === 'block') openConfirmModal('block', userId, row);
-        else if (action === 'deactivate') openConfirmModal('deactivate', userId, row);
-        else if (action === 'delete') openConfirmModal('delete', userId, row);
+        else if (action === 'reset') openConfirmModal('reset', userId);
+        else if (action === 'status') openConfirmModal('status', userId, actionBtn.getAttribute('data-status-value'));
+        else if (action === 'toggle-active') openConfirmModal('toggle-active', userId);
+        else if (action === 'archive') openConfirmModal('archive', userId);
+        else if (action === 'restore') openConfirmModal('restore', userId);
     });
 
     // Drawer's own Edit / Reset Password buttons act on whichever user is
@@ -475,10 +617,7 @@
         if (currentDrawerUserId) openUserModal('edit', currentDrawerUserId);
     });
     if (drawerResetBtn) drawerResetBtn.addEventListener('click', function () {
-        if (currentDrawerUserId) {
-            const row = table.querySelector('.um-row[data-user-id="' + currentDrawerUserId + '"]');
-            openConfirmModal('reset', currentDrawerUserId, row);
-        }
+        if (currentDrawerUserId) openConfirmModal('reset', currentDrawerUserId);
     });
 
     document.addEventListener('keydown', function (e) {
@@ -497,9 +636,9 @@
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
         const action = params.get('action');
+        const roleMap = { patients: 'patient', doctors: 'doctor', pharmacists: 'pharmacist', administrators: 'admin', staff: 'staff' };
 
         if (tab) {
-            const roleMap = { patients: 'patient', doctors: 'doctor', pharmacists: 'pharmacist', administrators: 'admin', staff: 'staff' };
             const role = roleMap[tab] || tab;
             const matchingTab = document.querySelector('.um-tabs .tab-btn[data-role="' + role + '"]');
             if (matchingTab) matchingTab.click();
@@ -508,10 +647,10 @@
         if (action === 'add') {
             openUserModal('add', null);
             if (tab) {
-                const roleMap = { patients: 'patient', doctors: 'doctor', pharmacists: 'pharmacist', administrators: 'admin', staff: 'staff' };
                 const role = roleMap[tab] || tab;
                 const roleSelect = userForm.querySelector('[name="role"]');
                 if (roleSelect && role) roleSelect.value = role;
+                syncStaffTypeVisibility();
             }
         }
     })();

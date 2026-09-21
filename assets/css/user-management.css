@@ -61,6 +61,30 @@
     background: var(--teal-light);
 }
 
+/* Active/Archived view switch, folded into the same row as the role tabs
+   (right-aligned, separated by a divider) instead of a second stacked
+   row of buttons. */
+.tabs-container.um-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+}
+
+.um-view-switch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 14px;
+    margin-left: auto;
+    border-left: 1px solid var(--border);
+}
+
+.um-view-switch .tab-btn {
+    text-decoration: none;
+}
+
 /* ---------- Toolbar ---------- */
 
 .um-toolbar {
@@ -144,9 +168,19 @@
 .status-um-blocked { background: var(--red-light); color: var(--red); }
 .status-um-pending { background: var(--amber-light); color: #92650f; }
 .status-um-deactivated { background: var(--purple-light); color: var(--purple); }
+.status-um-confined { background: var(--blue-light); color: var(--blue); }
+.status-um-deceased { background: #eef1f4; color: var(--text-secondary); }
+.status-um-archived { background: #eef1f4; color: var(--text-muted); }
 
 /* ---------- Row actions: two inline buttons + kebab dropdown for the
    rest, since 6 actions is too many to lay out inline in one cell. ---------- */
+
+/* Row count text above the table ("18 users") — kept in the DOM since
+   user-management.js likely updates it on search/filter, just hidden
+   visually per request. */
+#umRowCount {
+    display: none;
+}
 
 .um-row-actions {
     display: flex;
@@ -154,6 +188,51 @@
     gap: 6px;
     justify-content: flex-end;
     position: relative;
+}
+
+/* Row action buttons (View / Edit / Restore). Sized to line up with the
+   30px .um-kebab-btn beside them. Base style is a quiet outlined button;
+   "restore" gets a teal-tinted treatment since it's the primary action
+   on the Archived view (mirrors how .btn-primary vs .btn-secondary work
+   elsewhere, without needing a second class in the PHP markup). */
+.btn-row-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    padding: 0 12px;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.btn-row-action:hover {
+    background: var(--bg);
+    border-color: var(--teal);
+    color: var(--teal-dark);
+}
+
+.btn-row-action:active {
+    transform: scale(0.96);
+}
+
+.btn-row-action[data-um-action="restore"] {
+    color: var(--teal-dark);
+    background: var(--teal-light);
+    border-color: transparent;
+}
+
+.btn-row-action[data-um-action="restore"]:hover {
+    background: var(--teal);
+    color: #ffffff;
 }
 
 .um-kebab-wrap {
@@ -298,6 +377,7 @@
     height: 8px;
     border-radius: 999px;
     background: var(--teal);
+    z-index: 1;
 }
 
 /* Account status overview — reuses the same donut pattern as Reports. */
@@ -325,9 +405,8 @@
 }
 
 .um-donut-legend {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
     gap: 10px 16px;
     margin-top: 14px;
     font-size: 12.5px;
@@ -338,6 +417,12 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+}
+
+@media (max-width: 420px) {
+    .um-donut-legend {
+        grid-template-columns: 1fr;
+    }
 }
 
 .um-donut-legend i {
@@ -384,6 +469,22 @@
 
 .um-table-wrap:not(.is-loading) .um-skeleton-row {
     display: none;
+}
+
+/* Fix confirmed via DevTools Computed panel: .table-wrap only sets
+   overflow-x: auto (doctor-dashboard.css). Per the CSS overflow spec, when
+   one axis is auto and the other is left as the default "visible", the
+   browser silently computes the visible one as auto too — so overflow-y
+   becomes auto on its own, with no rule anywhere actually writing it.
+   That's what was producing the phantom vertical scrollbar/whitespace.
+   Setting overflow-y: visible doesn't fix it (the browser just converts
+   it back to auto again, since visible+auto can't coexist). overflow-y:
+   hidden avoids the substitution instead — and since this element has no
+   explicit height (max-height: none, height: auto), it never clips
+   anything; it just stops the unwanted scrollbar from appearing. */
+.um-table-wrap {
+    max-height: none !important;
+    overflow-y: hidden !important;
 }
 
 /* ---------- Right-side View drawer (same component family as
@@ -702,6 +803,16 @@ body.modal-open {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 14px;
+}
+
+/* .um-form-row-staff-type (and any other conditionally-shown form row) is
+   toggled via the `hidden` attribute in user-management.js. `[hidden]` and
+   `.um-form-row` are both author-origin rules at equal specificity, so
+   without this, `.um-form-row { display: grid }` above wins the cascade
+   and the row stays visible even while `hidden` - e.g. Staff Type showing
+   for a Doctor/Pharmacist/Admin/Patient. */
+.um-form-row[hidden] {
+    display: none;
 }
 
 .um-form-row .um-field {

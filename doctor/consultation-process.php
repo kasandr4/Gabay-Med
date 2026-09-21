@@ -9,6 +9,7 @@ require_role('doctor');
 require_once '../config/db.php';
 require_once '../includes/csrf.php';
 require_once '../includes/notifications.php';
+require_once '../includes/audit_log.php';
 
 function backToConsultation($appointmentId, $type, $message)
 {
@@ -80,28 +81,35 @@ if ($appointment['checked_in_at'] === null) {
 }
 
 // Collect prescription rows (only relevant when a prescription is issued).
-// NOTE: this only ever writes to `prescriptions` — it does not touch
-// inventory_medicines.current_stock. Prescribing and Inventory are still
-// two separate records of the same event; consultation.php now at least
-// shows the doctor real stock levels from inventory_medicines while
-// they're prescribing (see medicineOptions there), but nothing here
-// deducts against it. TODO(backend): decide whether stock should be
-// deducted at issue time (here) or at actual dispensing time in Pharmacy
-// (more clinically accurate, but requires a real dispensing workflow
-// that doesn't exist yet either).
-$medicineNames = $_POST['medicine_name'] ?? [];
+// NOTE: this still only ever writes to `prescriptions` — it does not touch
+// inventory_medicines.current_stock, and that's intentional. Prescribing
+// is a clinical record of what a doctor ordered for one patient;
+// inventory_medicines tracks BULK stock for procurement, supplier
+// bidding, and reconciliation. Those remain two different concerns, but
+// as of 022_link_prescriptions_to_dispense.sql they're now linked by a
+// real medicine_id so staff/dispense-stock.php can pull up an exact,
+// verifiable match when a patient later presents this prescription —
+// see that file's header comment for the dispense side of this.
+//
+// LINKED TO INVENTORY (2026-09-05): the form now submits medicine_id[]
+// (the catalog row the doctor picked from consultation.php's
+// medicineOptions), not a free-typed name. The name stored in
+// prescriptions.medicine_name is resolved from that id server-side just
+// below — never trusted from the client — so the two columns can never
+// disagree.
+$medicineIdsRaw = $_POST['medicine_id'] ?? [];
 $quantities = $_POST['quantity'] ?? [];
 $instructions = $_POST['instructions'] ?? [];
 
 $prescriptionRows = [];
 if ($outcome === 'prescribed') {
-    foreach ($medicineNames as $i => $name) {
-        $name = trim($name);
-        if ($name === '') {
+    foreach ($medicineIdsRaw as $i => $rawId) {
+        $medicineId = (int) $rawId;
+        if ($medicineId <= 0) {
             continue;
         }
         $prescriptionRows[] = [
-            "medicine_name" => $name,
+            "medicine_id" => $medicineId,
             "quantity" => trim($quantities[$i] ?? ''),
             "instructions" => trim($instructions[$i] ?? ''),
         ];
@@ -109,6 +117,67 @@ if ($outcome === 'prescribed') {
 
     if (empty($prescriptionRows)) {
         backToConsultation($appointmentId, "error", "Add at least one medicine before issuing a prescription.");
+    }
+
+    // Resolve every picked medicine_id to its current catalog name in one
+    // query, and reject the whole submission if any id doesn't actually
+    // exist (e.g. removed from the catalog between page load and submit).
+    // This guarantees prescriptions.medicine_name always matches a real
+    // inventory_medicines row at the moment it's saved.
+    $idsToResolve = array_unique(array_column($prescriptionRows, 'medicine_id'));
+    $placeholders = implode(',', array_fill(0, count($idsToResolve), '?'));
+    $types = str_repeat('i', count($idsToResolve));
+    $stmt = $conn->prepare("SELECT medicine_id, name FROM inventory_medicines WHERE medicine_id IN ($placeholders)");
+    $stmt->bind_param($types, ...$idsToResolve);
+    $stmt->execute();
+    $resolvedNames = [];
+    $res = $stmt->get_result();
+    while ($row = $res->fetch_assoc()) {
+        $resolvedNames[(int) $row['medicine_id']] = $row['name'];
+    }
+    $stmt->close();
+
+    foreach ($prescriptionRows as $row) {
+        if (!isset($resolvedNames[$row['medicine_id']])) {
+            backToConsultation($appointmentId, "error", "One of the selected medicines is no longer available in the catalog. Please review the prescription.");
+        }
+    }
+}
+
+// Lab tests are optional and independent of $outcome - a doctor may order
+// labs regardless of whether the visit ends in consultation_only,
+// prescribed, follow_up, or admitted. Rows with no test selected are
+// dropped, same handling as empty medicine rows above.
+$labTestNames = $_POST['labTestName'] ?? [];
+$labTestNotes = $_POST['labTestNotes'] ?? [];
+
+$labOrderRows = [];
+foreach ($labTestNames as $i => $name) {
+    $name = trim($name);
+    if ($name === '') {
+        continue;
+    }
+    $labOrderRows[] = [
+        "test_name" => $name,
+        "notes" => trim($labTestNotes[$i] ?? ''),
+    ];
+}
+
+// Every selected test must exist in the active lab_tests catalog; the
+// catalog id is stored alongside the test_name snapshot on lab_orders.
+if (!empty($labOrderRows)) {
+    $labCatalog = [];
+    $labCatalogResult = $conn->query("SELECT lab_test_id, test_name FROM lab_tests WHERE is_active = 1");
+    if ($labCatalogResult) {
+        while ($labCatalogRow = $labCatalogResult->fetch_assoc()) {
+            $labCatalog[$labCatalogRow['test_name']] = (int) $labCatalogRow['lab_test_id'];
+        }
+    }
+    foreach ($labOrderRows as $i => $row) {
+        if (!isset($labCatalog[$row['test_name']])) {
+            backToConsultation($appointmentId, "error", "One of the selected lab tests is no longer available. Please review the lab tests.");
+        }
+        $labOrderRows[$i]['lab_test_id'] = $labCatalog[$row['test_name']];
     }
 }
 
@@ -122,6 +191,22 @@ $clinicalNotesValue = $clinicalNotes === '' ? null : $clinicalNotes;
 $conn->begin_transaction();
 
 try {
+    // Atomic claim: only ONE request can flip this appointment out of
+    // pending/confirmed. A double-click or a second tab racing this same
+    // POST loses here (0 rows affected) instead of inserting a second
+    // consultation (and duplicate prescriptions/lab orders) for the same
+    // visit - the earlier status check above runs before the transaction
+    // and can't stop that on its own.
+    $stmt = $conn->prepare("UPDATE appointments SET status = 'completed' WHERE appointment_id = ? AND status IN ('pending', 'confirmed')");
+    $stmt->bind_param("i", $appointmentId);
+    $stmt->execute();
+    $claimed = $stmt->affected_rows;
+    $stmt->close();
+    if ($claimed !== 1) {
+        $conn->rollback();
+        backToConsultation(0, "error", "This appointment was already completed.");
+    }
+
     $stmt = $conn->prepare(
         "INSERT INTO consultations (appointment_id, patient_id, doctor_id, findings, clinical_notes, outcome)
          VALUES (?, ?, ?, ?, ?, ?)"
@@ -133,13 +218,27 @@ try {
 
     if ($outcome === 'prescribed') {
         $stmt = $conn->prepare(
-            "INSERT INTO prescriptions (consultation_id, patient_id, doctor_id, medicine_name, quantity, instructions)
-             VALUES (?, ?, ?, ?, ?, ?)"
+            "INSERT INTO prescriptions (consultation_id, patient_id, doctor_id, medicine_name, medicine_id, quantity, instructions)
+             VALUES (?, ?, ?, ?, ?, ?, ?)"
         );
         foreach ($prescriptionRows as $row) {
+            $medicineName = $resolvedNames[$row['medicine_id']];
             $quantityValue = $row['quantity'] === '' ? null : $row['quantity'];
             $instructionsValue = $row['instructions'] === '' ? null : $row['instructions'];
-            $stmt->bind_param("iiisss", $consultationId, $patientId, $doctorId, $row['medicine_name'], $quantityValue, $instructionsValue);
+            $stmt->bind_param("iiisiss", $consultationId, $patientId, $doctorId, $medicineName, $row['medicine_id'], $quantityValue, $instructionsValue);
+            $stmt->execute();
+        }
+        $stmt->close();
+    }
+
+    if (!empty($labOrderRows)) {
+        $stmt = $conn->prepare(
+            "INSERT INTO lab_orders (consultation_id, patient_id, doctor_id, lab_test_id, test_name, notes)
+             VALUES (?, ?, ?, ?, ?, ?)"
+        );
+        foreach ($labOrderRows as $row) {
+            $notesValue = $row['notes'] === '' ? null : $row['notes'];
+            $stmt->bind_param("iiiiss", $consultationId, $patientId, $doctorId, $row['lab_test_id'], $row['test_name'], $notesValue);
             $stmt->execute();
         }
         $stmt->close();
@@ -159,6 +258,26 @@ try {
 } catch (Exception $e) {
     $conn->rollback();
     backToConsultation($appointmentId, "error", "Something went wrong while saving the consultation. Please try again.");
+}
+
+// Tell the patient and lab staff about newly ordered tests. Independent
+// of $outcome - ordering labs never implies admission or any other outcome.
+if (!empty($labOrderRows)) {
+    notify_lab_order_created($conn, $patientId, $doctorId, array_column($labOrderRows, 'test_name'));
+}
+
+// Audit trail entry for prescribing activity (see includes/audit_log.php
+// and pharmacist/audit-trail.php, which surfaces the 'prescribing' module
+// alongside inventory/dispensing/reports - a pharmacist can now see which
+// doctor prescribed what, not just who later dispensed it). Best-effort
+// and non-blocking, same as every other write_audit_log call in the app:
+// a logging failure must never undo an already-committed prescription.
+if ($outcome === 'prescribed' && !empty($prescriptionRows)) {
+    $rxDetails = array_map(
+        static fn(array $row): string => $resolvedNames[$row['medicine_id']] . ($row['quantity'] !== '' ? " ({$row['quantity']})" : ''),
+        $prescriptionRows
+    );
+    write_audit_log($conn, $doctorId, 'doctor', 'prescription_issued', 'prescribing', "Consultation #{$consultationId}: " . implode('; ', $rxDetails), $patientId);
 }
 
 // Notify the patient of the outcome. Skipped for 'admitted' - that
@@ -196,10 +315,29 @@ $successMessages = [
     "admitted"          => "Consultation saved. Continue below to admit the patient to confinement.",
 ];
 
+// Lab tests are independent of outcome, so this flag/consultation_id gets
+// attached to whichever flash block below actually fires, regardless of
+// which outcome the doctor picked. print-lab-order.php looks up its rows
+// by consultation_id, the same way print-consultation.php already does.
+$hasLabOrder = !empty($labOrderRows);
+if ($hasLabOrder) {
+    $successMessages = array_map(function ($msg) {
+        return $msg . " Lab tests ordered.";
+    }, $successMessages);
+}
+
 if ($outcome === 'admitted') {
-    $_SESSION['consultation_flash'] = [
+    // confined-patients.php reads $_SESSION['confine_flash'], not
+    // consultation_flash - using the wrong key here meant this message
+    // (and, before this fix, the has_lab_order/consultation_id data) was
+    // silently dropped: never shown, and left sitting in the session to
+    // leak onto whatever page next happened to read consultation_flash
+    // (e.g. dashboard.php, on the doctor's next visit there).
+    $_SESSION['confine_flash'] = [
         "type" => "success",
         "message" => $successMessages[$outcome],
+        "consultation_id" => $hasLabOrder ? $consultationId : null,
+        "has_lab_order" => $hasLabOrder,
     ];
     // This only starts the Confinement module's admission form (room
     // assignment, etc.) - it does not itself confine or discharge anyone.
@@ -210,9 +348,14 @@ if ($outcome === 'admitted') {
 }
 
 if ($outcome === 'follow_up') {
-    $_SESSION['consultation_flash'] = [
+    // follow-up.php reads $_SESSION['followup_flash'], not
+    // consultation_flash - same mismatch/leak as the 'admitted' branch
+    // above, fixed the same way.
+    $_SESSION['followup_flash'] = [
         "type" => "success",
         "message" => $successMessages[$outcome] . " Set a date below to finish scheduling it.",
+        "consultation_id" => $hasLabOrder ? $consultationId : null,
+        "has_lab_order" => $hasLabOrder,
     ];
     // Look up the patient's name to prefill the Schedule Follow-Up form -
     // this redirect only pre-fills fields, it does not itself create a
@@ -242,6 +385,12 @@ $_SESSION['consultation_flash'] = [
     // may decline account activation, so a printed handout is the
     // universal fallback regardless of that choice.
     "consultation_id" => $consultationId,
+    "has_lab_order" => $hasLabOrder,
+    // Separate from has_lab_order: dashboard.php uses this to show a
+    // "Print Pharmacy Slip" link (print-pharmacy-slip.php) alongside the
+    // Visit Summary one, only when there's actually something to hand to
+    // the pharmacy counter.
+    "has_prescription" => !empty($prescriptionRows),
 ];
 header("Location: dashboard.php");
 exit;

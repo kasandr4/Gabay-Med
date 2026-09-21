@@ -4,21 +4,33 @@
 // admin/includes/sidebar.php (which itself mirrors doctor/includes/sidebar.php
 // and patient/includes/sidebar.php), so all portals read as one application.
 //
-// UI-ONLY NOTE: This module is being built ahead of the backend. The unread
-// notification count and pharmacist name below are placeholder/static values
-// where a real query would normally run (see the "TODO(backend)" comments).
-// When the data layer is wired up, replace those spots the same way
-// doctor/includes/sidebar.php pulls $unread_count from get_unread_notification_count().
+// REAL BACKEND (2026-07-27): the notification bell was UI-only (static
+// placeholder count + hardcoded sample dropdown data) until now — same
+// gap admin/includes/sidebar.php had, fixed the same way:
+// get_unread_notification_count() for the badge here, and
+// includes/notifications_api.php (new, mirrors admin's/doctor's) for the
+// dropdown's list/mark-read/count actions below.
 //
 // login.php now routes role = 'pharmacist' to pharmacist/dashboard.php.
+//
+// COLLAPSIBLE (2026-09): on desktop widths the sidebar collapses to a slim
+// icon rail with the panel button at its top (choice remembered per
+// browser), and its menu scrollbar is hidden. The behaviour, CSS and JS are
+// shared by every portal: see includes/sidebar_collapse.php.
 //
 // Usage: Set $current_page before including this file
 // Example: $current_page = 'dashboard'; include 'includes/sidebar.php';
 
-// TODO(backend): replace with get_unread_notification_count($conn, $_SESSION['user_id'])
-$unread_count = 2;
+require_once __DIR__ . '/../../includes/notifications.php';
+require_once __DIR__ . '/../../includes/sidebar_collapse.php';
 
-// TODO(backend): replace with $_SESSION values once auth session shape is finalized
+// $conn is expected to already be available (every page including this
+// sidebar also includes config/db.php first).
+$unread_count = 0;
+if (isset($conn) && isset($_SESSION['user_id'])) {
+    $unread_count = get_unread_notification_count($conn, $_SESSION['user_id']);
+}
+
 $pharmacistFirstName = $_SESSION['first_name'] ?? 'Pharmacist';
 $pharmacistLastName  = $_SESSION['last_name'] ?? 'User';
 $pharmacistFullName  = trim($pharmacistFirstName . ' ' . $pharmacistLastName);
@@ -30,10 +42,13 @@ $pharmacistRoleLabel = $_SESSION['role_label'] ?? 'Pharmacist';
 // around the pharmacist's actual daily workflow instead.
 //
 // PIVOT (2026-07-17): Dispense Medicine removed — the portal tracks box-level
-// stock movement, not per-patient/per-prescription dispensing. Storage Exit
-// Scan and Delivery Receiving are grouped together under "Stock Movement"
-// since they're now the two directions the same box count moves (in via
-// delivery, out via scan).
+// stock movement, not per-patient/per-prescription dispensing.
+//
+// PIVOT (2026-07-26): Storage Exit Scan ("Stock Release") removed — the
+// barcode-scan stock-out step is no longer part of the portal.
+//
+// Dispense Stock is handled by inventory-counting staff. Pharmacists retain
+// read-only visibility through the Dispense Log below.
 $navigation = [
     [
         'title' => 'Main',
@@ -44,8 +59,8 @@ $navigation = [
     [
         'title' => 'Stock Movement',
         'items' => [
-            ['key' => 'exit-scan', 'label' => 'Stock Release',  'href' => 'storage-exit-scan.php',  'icon' => 'scan'],
-            ['key' => 'delivery',  'label' => 'Delivery Receiving', 'href' => 'delivery-receiving.php', 'icon' => 'truck'],
+            ['key' => 'record-stock-batch', 'label' => 'Record Stock Batch', 'href' => 'record-stock-batch.php', 'icon' => 'package'],
+            ['key' => 'medicine-catalog', 'label' => 'Medicine Catalog',       'href' => 'medicine-catalog.php', 'icon' => 'pill'],
         ],
     ],
     [
@@ -57,17 +72,24 @@ $navigation = [
         ],
     ],
     [
-        'title' => 'Reconciliation',
+        'title' => 'Procurement',
         'items' => [
-            ['key' => 'reconciliation', 'label' => 'Reconciliation Entry', 'href' => 'reconciliation.php', 'icon' => 'check-square'],
+            ['key' => 'purchase-requests', 'label' => 'Purchase Requests', 'href' => 'purchase-requests.php', 'icon' => 'file-text'],
+            ['key' => 'purchase-orders', 'label' => 'Purchase Orders', 'href' => 'purchase-orders.php', 'icon' => 'truck'],
+        ],
+    ],
+    [
+        'title' => 'Inventory Count',
+        'items' => [
+            ['key' => 'inventory-count', 'label' => 'Inventory Count', 'href' => 'inventory-count.php', 'icon' => 'check-square'],
+            ['key' => 'inventory-count-history', 'label' => 'Assignment History', 'href' => 'inventory-count-history.php', 'icon' => 'history'],
         ],
     ],
     [
         'title' => 'Reports',
         'items' => [
-            // UI ONLY (2026-07-18): reports.php is a static/mock preview
-            // module — see the note at the top of that file.
             ['key' => 'reports', 'label' => 'Reports', 'href' => 'reports.php', 'icon' => 'file-text'],
+            ['key' => 'audit-trail', 'label' => 'Audit Trail', 'href' => 'audit-trail.php', 'icon' => 'history'],
         ],
     ],
 ];
@@ -83,9 +105,13 @@ $icons = [
     'check-square' => '<polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',
     'calendar'     => '<rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>',
     'trending-up'  => '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline>',
+    'history'      => '<path d="M3 12a9 9 0 1 0 3-6.7"></path><polyline points="3 3 3 9 9 9"></polyline><polyline points="12 7 12 12 15 14"></polyline>',
+    'package'      => '<path d="M12 2 3 7l9 5 9-5-9-5Z"></path><path d="M3 7v10l9 5 9-5V7"></path><path d="M12 12v10"></path>',
+    'pill'         => '<path d="M10.5 20.5 20.5 10.5a4.95 4.95 0 0 0-7-7l-10 10a4.95 4.95 0 0 0 7 7Z"></path><path d="m8.5 8.5 7 7"></path>',
     'file-text'    => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line>',
 ];
 ?>
+<?php sidebar_collapse_head('portal'); ?>
 <!-- Mobile top navigation bar (hidden on desktop; shows hamburger + brand + notifications) -->
 <header class="mobile-topbar" id="mobileTopbar">
     <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
@@ -117,6 +143,8 @@ $icons = [
 
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar">
+    <?php sidebar_collapse_toggle(); ?>
+
     <div class="sidebar-top">
         <div class="brand">
             <img src="../logo-icon.png" alt="GabayMed logo" class="brand-logo">
@@ -141,11 +169,11 @@ $icons = [
                     <?php foreach ($section['items'] as $item) : ?>
                         <?php $isActive = (isset($current_page) && $current_page === $item['key']) ? 'active' : ''; ?>
                         <li>
-                            <a href="<?php echo htmlspecialchars($item['href']); ?>" class="nav-link <?php echo $isActive; ?>">
+                            <a href="<?php echo htmlspecialchars($item['href']); ?>" class="nav-link <?php echo $isActive; ?>" title="<?php echo htmlspecialchars($item['label']); ?>" aria-label="<?php echo htmlspecialchars($item['label']); ?>">
                                 <svg class="nav-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <?php echo $icons[$item['icon']] ?? ''; ?>
                                 </svg>
-                                <?php echo htmlspecialchars($item['label']); ?>
+                                <span class="nav-label"><?php echo htmlspecialchars($item['label']); ?></span>
                             </a>
                         </li>
                     <?php endforeach; ?>
@@ -157,7 +185,7 @@ $icons = [
     <!-- User card + standalone Log Out button, matching the Admin/Doctor
          Portal's static sidebar-bottom pattern (no dropdown). -->
     <div class="sidebar-bottom">
-        <a href="profile.php" class="user-card">
+        <a href="profile.php" class="user-card" title="<?php echo htmlspecialchars($pharmacistFullName); ?>" aria-label="<?php echo htmlspecialchars($pharmacistFullName . ' - profile'); ?>">
             <div class="user-avatar"><?php echo htmlspecialchars($pharmacistInitial); ?></div>
             <div class="user-info">
                 <span class="user-name"><?php echo htmlspecialchars($pharmacistFullName); ?></span>
@@ -165,13 +193,13 @@ $icons = [
             </div>
         </a>
 
-        <a href="../logout.php" class="logout-btn">
+        <a href="../logout.php" class="logout-btn" title="Log Out" aria-label="Log Out">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                 <polyline points="16 17 21 12 16 7"></polyline>
                 <line x1="21" y1="12" x2="9" y2="12"></line>
             </svg>
-            Log Out
+            <span class="logout-label">Log Out</span>
         </a>
     </div>
 </aside>
@@ -187,6 +215,8 @@ $icons = [
     </div>
 </div>
 <div class="notification-overlay" id="notification-overlay" onclick="toggleNotifications()"></div>
+
+<?php sidebar_collapse_script(); ?>
 
 <script>
     // Mobile sidebar open/close. Matches doctor-dashboard.css's actual
@@ -221,11 +251,7 @@ $icons = [
         });
     })();
 
-    // Toggles the notification dropdown panel.
-    // TODO(backend): loadNotifications() currently renders static sample
-    // data (see below) instead of fetching includes/notifications_api.php,
-    // since this module is UI-only for now. Swap in the fetch() call used
-    // by doctor/includes/sidebar.php once the pharmacist API endpoint exists.
+    // Toggles the notification dropdown panel, loading its contents on open.
     function toggleNotifications() {
         const panel = document.getElementById('notification-panel');
         const overlay = document.getElementById('notification-overlay');
@@ -240,31 +266,89 @@ $icons = [
     }
 
     function loadNotifications() {
-        const list = document.getElementById('notification-list');
-        // TODO(backend): replace with fetch('includes/notifications_api.php')
-        const sample = [{
-                text: 'Amoxicillin 500mg is below the low-stock threshold',
-                time: '18 minutes ago'
-            },
-            {
-                text: 'Delivery from MedSupply Corp marked as issued',
-                time: '2 hours ago'
-            },
-        ];
-        if (sample.length === 0) {
-            list.innerHTML = '<div class="notification-empty">No notifications</div>';
-            return;
-        }
-        list.innerHTML = sample.map(n => `
-            <div class="notification-item">
-                <p>${n.text}</p>
-                <span class="notification-time">${n.time}</span>
-            </div>
-        `).join('');
+        fetch('includes/notifications_api.php?action=list')
+            .then(res => res.json())
+            .then(data => {
+                const list = document.getElementById('notification-list');
+                if (!data.notifications || data.notifications.length === 0) {
+                    list.innerHTML = '<div class="notification-empty">No notifications yet.</div>';
+                    return;
+                }
+                list.innerHTML = data.notifications.map((n, index) => `
+                    <div class="notification-item notification-item-animated ${n.is_read ? '' : 'unread'}"
+                         style="animation-delay: ${index * 70}ms"
+                         onclick="openNotification(${n.notification_id}, '${n.link || ''}')">
+                        <div class="notification-item-row">
+                            ${notificationIcon(n.type)}
+                            <div class="notification-item-body">
+                                <div class="notification-message">${escapeHtml(n.message)}</div>
+                                <div class="notification-time">${n.time_ago}</div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            })
+            .catch(() => {
+                document.getElementById('notification-list').innerHTML = '<div class="notification-empty">Could not load notifications.</div>';
+            });
+    }
+
+    function openNotification(id, link) {
+        fetch('includes/notifications_api.php?action=mark_read&id=' + id)
+            .then(() => {
+                if (link) window.location.href = link;
+                else updateBellBadge();
+            });
     }
 
     function markAllNotificationsRead() {
-        // TODO(backend): POST to notifications_api.php to mark all read
-        document.querySelectorAll('.bell-badge').forEach(el => el.remove());
+        fetch('includes/notifications_api.php?action=mark_all_read')
+            .then(() => {
+                loadNotifications();
+                updateBellBadge();
+            });
     }
+
+    function updateBellBadge() {
+        fetch('includes/notifications_api.php?action=count')
+            .then(res => res.json())
+            .then(data => {
+                document.querySelectorAll('.bell-badge').forEach(b => b.remove());
+                if (data.count > 0) {
+                    document.querySelectorAll('.bell-btn').forEach(btn => {
+                        const badge = document.createElement('span');
+                        badge.className = 'bell-badge';
+                        badge.textContent = data.count > 9 ? '9+' : data.count;
+                        btn.appendChild(badge);
+                    });
+                }
+            });
+    }
+
+    // Minimal per-type icon (no colored border/background — just the icon
+    // itself in its type color) so a critical alert reads differently
+    // from a routine info notification at a glance, per type stored on
+    // notifications.type (see 006_add_notification_type.sql).
+    function notificationIcon(type) {
+        const icons = {
+            info: '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>',
+            success: '<circle cx="12" cy="12" r="10"></circle><polyline points="8 12 11 15 16 9"></polyline>',
+            warning: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>',
+            critical: '<polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line>',
+        };
+        const path = icons[type] || icons.info;
+        return `<span class="notification-icon notification-icon-${type || 'info'}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>
+        </span>`;
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // Poll for new notifications every 30 seconds so the badge feels live
+    // without needing websockets — same interval doctor/admin sidebars use.
+    setInterval(updateBellBadge, 30000);
 </script>

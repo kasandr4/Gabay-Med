@@ -19,7 +19,7 @@ switch ($action) {
 
     case 'list':
         $stmt = $conn->prepare("
-            SELECT notification_id, message, link, is_read, created_at
+            SELECT notification_id, message, type, link, is_read, created_at
             FROM notifications
             WHERE recipient_id = ?
             ORDER BY created_at DESC

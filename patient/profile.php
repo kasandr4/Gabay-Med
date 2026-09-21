@@ -2,6 +2,7 @@
 require_once '../includes/auth_guard.php';
 require_role('patient');
 require_once '../config/db.php';
+require_active_patient($conn);
 require_once '../includes/csrf.php';
 
 $active_page = 'profile';
@@ -70,33 +71,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 
     // ── users: personal info only (medical/emergency fields live in patient_profiles) ──
-    $stmt = $conn->prepare("
-        UPDATE users
-        SET
-            first_name = ?,
-            last_name = ?,
-            phone_number = ?,
-            email = ?,
-            birthdate = ?,
-            sex = ?,
-            philhealth_id = ?,
-            address = ?
-        WHERE user_id = ?
-    ");
-    $stmt->bind_param(
-        "ssssssssi",
-        $first_name,
-        $last_name,
-        $phone_number,
-        $email,
-        $birthdate,
-        $sex,
-        $philhealth_id,
-        $address,
-        $user_id
-    );
-    $usersOk = $stmt->execute();
-    $stmt->close();
+    // phone_number and email both have real UNIQUE constraints (login is
+    // by phone_number system-wide). Wrapped in try/catch because this
+    // environment's mysqli throws mysqli_sql_exception on a constraint
+    // violation (PHP 8.1+ default, confirmed live in this project by an
+    // earlier "Table doesn't exist" crash reaching the browser as a raw
+    // fatal error) rather than having execute() just return false - the
+    // $usersOk/$profileOk checks further down were written as if the
+    // latter were still true, so they'd never even be reached for this
+    // specific failure; the exception would crash the request first.
+    $usersOk = false;
+    try {
+        $stmt = $conn->prepare("
+            UPDATE users
+            SET
+                first_name = ?,
+                last_name = ?,
+                phone_number = ?,
+                email = ?,
+                birthdate = ?,
+                sex = ?,
+                philhealth_id = ?,
+                address = ?
+            WHERE user_id = ?
+        ");
+        $stmt->bind_param(
+            "ssssssssi",
+            $first_name,
+            $last_name,
+            $phone_number,
+            $email,
+            $birthdate,
+            $sex,
+            $philhealth_id,
+            $address,
+            $user_id
+        );
+        $usersOk = $stmt->execute();
+        $stmt->close();
+    } catch (mysqli_sql_exception $e) {
+        if ($e->getCode() === 1062) {
+            ob_end_clean();
+            $dupField = (strpos($e->getMessage(), 'email') !== false) ? 'email address' : 'phone number';
+            echo json_encode(['success' => false, 'message' => "That {$dupField} is already registered to another account."]);
+            exit;
+        }
+        // Some other constraint/DB error - not something the patient can
+        // fix by changing their input, so fall through to the generic
+        // "something went wrong" message below rather than exposing
+        // database internals.
+    }
 
     // ── patient_profiles: upsert (creates the row automatically the first
     // time this patient saves, updates it on every save after that) ──
